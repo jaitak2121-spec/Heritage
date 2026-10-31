@@ -121,8 +121,9 @@ Create or modify `backend/.env`:
 ```ini
 # Database & File Storage (SQLite default, Supabase PostgreSQL on Render)
 DATABASE_URL=sqlite:///./heritagelens.db
-# Supabase PostgreSQL Session Pooler Example (IPv4 for Render):
-# DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require
+# Supabase Session Pooler (IPv4 for Render; normalized to postgresql+psycopg2://):
+# Percent-encode password special characters, such as @ as %40 and / as %2F.
+# DATABASE_URL=postgresql://postgres.[project-ref]:[URL-encoded-password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE_MB=25
 

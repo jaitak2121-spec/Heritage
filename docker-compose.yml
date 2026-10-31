@@ -11,7 +11,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./heritagelens.db
       - UPLOAD_DIR=uploads
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
       - OMNIROUTER_API_KEY=${OMNIROUTER_API_KEY:-}
       - OMNIROUTER_BASE_URL=${OMNIROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - OMNIROUTER_MODEL=${OMNIROUTER_MODEL:-google/gemini-2.0-flash-001}

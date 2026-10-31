@@ -2,6 +2,7 @@ import os
 import logging
 from pathlib import Path
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -17,43 +18,67 @@ if env_file.exists():
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip())
 
+
+def normalize_database_url(database_url: str) -> str:
+    """Select the installed psycopg2 driver for every supported PostgreSQL URI."""
+    driver_prefixes = (
+        "postgres://",
+        "postgresql://",
+        "postgresql+psycopg://",
+    )
+    for prefix in driver_prefixes:
+        if database_url.startswith(prefix):
+            return database_url.replace(prefix, "postgresql+psycopg2://", 1)
+    return database_url
+
+
+def postgres_connect_args(database_url: str) -> dict[str, str]:
+    """Require TLS for remote PostgreSQL unless the URI already sets sslmode."""
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        return {}
+
+    if any(key.lower() == "sslmode" for key in url.query):
+        return {}
+
+    if (url.host or "").lower() in {"localhost", "127.0.0.1", "db", "postgres"}:
+        return {}
+
+    return {"sslmode": "require"}
+
+
 # 1. Resolve DATABASE_URL from environment with SQLite local-development fallback
 raw_database_url = os.getenv("DATABASE_URL", "").strip()
 if not raw_database_url:
     DATABASE_URL = f"sqlite:///{BASE_DIR}/heritagelens.db"
     logger.info(f"DATABASE_URL not set; using local SQLite fallback: {DATABASE_URL}")
 else:
-    DATABASE_URL = raw_database_url
+    DATABASE_URL = normalize_database_url(raw_database_url)
 
-# 2. Normalize database URL scheme for SQLAlchemy 2.0 compatibility
-# Cloud platforms like Render and Supabase frequently provide 'postgres://' which SQLAlchemy requires as 'postgresql://'
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# 2. Normalize database URL scheme to explicitly use psycopg2
+# A URL beginning with postgresql+psycopg:// explicitly selects psycopg 3 and
+# imports the `psycopg` package. The image installs psycopg2-binary instead, so
+# every common PostgreSQL form is normalized above to postgresql+psycopg2://.
 
 # 3. Configure connection parameters and pool settings
-is_sqlite = DATABASE_URL.startswith("sqlite")
+database_url = make_url(DATABASE_URL)
+is_sqlite = database_url.get_backend_name() == "sqlite"
 
 if is_sqlite:
     # SQLite connection configuration (local development)
     connect_args = {"check_same_thread": False}
     engine = create_engine(
-        DATABASE_URL,
+        database_url,
         connect_args=connect_args,
         pool_pre_ping=True,
     )
 else:
     # PostgreSQL / Supabase Session Pooler configuration (Render deployment)
     # Supabase Session Pooler (port 5432/6543) requires pre-ping verification and connection recycling
-    connect_args = {}
-    
-    # Ensure SSL mode is enabled for remote PostgreSQL connections unless explicitly configured
-    if "sslmode" not in DATABASE_URL.lower() and not any(
-        host in DATABASE_URL.lower() for host in ("localhost", "127.0.0.1", "@db:", "@postgres:")
-    ):
-        connect_args["sslmode"] = "require"
+    connect_args = postgres_connect_args(DATABASE_URL)
 
     engine = create_engine(
-        DATABASE_URL,
+        database_url,
         connect_args=connect_args,
         pool_pre_ping=True,   # Validates connections before checkout, preventing dropped pooler connection errors
         pool_recycle=300,     # Recycles connections every 5 minutes to stay ahead of pooler idle timeouts
