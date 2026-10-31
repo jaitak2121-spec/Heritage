@@ -15,7 +15,9 @@ function App() {
         <Route path="/archive" element={<ArchivePage />} />
         <Route path="/archive/:id" element={<SiteDetailPage />} />
         <Route path="/site/:id" element={<SiteDetailPage />} />
+        <Route path="/sites/:id" element={<SiteDetailPage />} />
         <Route path="/upload" element={<UploadPage />} />
+        <Route path="/digitize" element={<UploadPage />} />
         <Route path="/map" element={<MapPage />} />
         <Route path="/assistant" element={<AssistantPage />} />
       </Route>
