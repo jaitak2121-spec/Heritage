@@ -295,10 +295,11 @@ def seed_database(db: Session) -> int:
     created_count = 0
 
     for site_dict in SEED_SITES:
-        docs_data = site_dict.pop("documents", [])
-        images_data = site_dict.pop("images", [])
+        docs_data = list(site_dict.get("documents", []))
+        images_data = list(site_dict.get("images", []))
+        site_data = {k: v for k, v in site_dict.items() if k not in ("documents", "images")}
 
-        site = HeritageSite(**site_dict)
+        site = HeritageSite(**site_data)
         db.add(site)
         db.flush()  # Populates site.id
 

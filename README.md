@@ -119,20 +119,46 @@ docker compose up --build
 Create or modify `backend/.env`:
 
 ```ini
-# Database & File Storage
+# Database & File Storage (SQLite default, Supabase PostgreSQL on Render)
 DATABASE_URL=sqlite:///./heritagelens.db
+# Supabase PostgreSQL Session Pooler Example (IPv4 for Render):
+# DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE_MB=25
 
 # CORS Configuration
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
-# Omnirouter AI Integration (Optional)
+# Omnirouter AI Configuration (Optional)
 # If omitted, HeritageLens operates in grounded archive fallback mode with zero failures
 OMNIROUTER_API_KEY=
-OMNIROUTER_BASE_URL=https://openrouter.ai/api/v1
-OMNIROUTER_MODEL=google/gemini-2.0-flash-001
+OMNIROUTER_BASE_URL=https://api.omnirouter.com/v1
+OMNIROUTER_MODEL=google/gemini-2.0-flash
 ```
+
+---
+
+## ☁️ Deploying Backend to Render with Supabase PostgreSQL
+
+### 1. Supabase Database Configuration
+1. Open your [Supabase Project Dashboard](https://supabase.com/dashboard).
+2. Navigate to **Project Settings** → **Database** → **Connection string**.
+3. Under **Connection pooling**, select **Mode: Session** and port **5432** (or copy the Session Pooler URI).
+   *Note: Using the Session Pooler provides IPv4 connectivity which is recommended for Render web services.*
+4. Copy the connection URI in format:  
+   `postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require`
+
+### 2. Render Web Service Deployment
+1. Create a new **Web Service** on [Render](https://render.com).
+2. Connect your Git repository and set:
+   - **Root Directory**: `backend`
+   - **Environment**: `Python`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. In **Environment Variables**, add:
+   - `DATABASE_URL`: Your Supabase Session Pooler connection URI from Step 1.
+   - `ALLOWED_ORIGINS`: Your deployed frontend URL(s) and local preview URLs (comma-separated).
+4. On startup, HeritageLens automatically initializes all PostgreSQL tables (`heritage_sites`, `archival_documents`, `site_images`) via SQLAlchemy `create_all` and seeds the 11 initial Indian monuments if the database is fresh, without overwriting existing data on subsequent deployments.
 
 ---
 

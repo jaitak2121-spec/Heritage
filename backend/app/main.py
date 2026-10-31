@@ -15,23 +15,23 @@ logger = logging.getLogger("heritagelens")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Initialize tables and execute non-breaking SQLite schema migrations
+    # 1. Initialize tables safely (Base.metadata.create_all preserves existing tables and records)
     logger.info("Initializing database tables...")
     Base.metadata.create_all(bind=engine)
     try:
-        with engine.connect() as conn:
-            cursor = conn.connection.cursor()
-            cursor.execute("PRAGMA table_info(archival_documents);")
-            cols = [row[1] for row in cursor.fetchall()]
-            if "file_path" not in cols:
-                cursor.execute("ALTER TABLE archival_documents ADD COLUMN file_path VARCHAR(500);")
-                logger.info("Migrated archival_documents: added file_path column.")
-            if "file_size" not in cols:
-                cursor.execute("ALTER TABLE archival_documents ADD COLUMN file_size INTEGER;")
-                logger.info("Migrated archival_documents: added file_size column.")
-            conn.connection.commit()
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        if "archival_documents" in inspector.get_table_names():
+            existing_columns = {col["name"] for col in inspector.get_columns("archival_documents")}
+            with engine.begin() as conn:
+                if "file_path" not in existing_columns:
+                    conn.execute(text("ALTER TABLE archival_documents ADD COLUMN file_path VARCHAR(500);"))
+                    logger.info("Migrated archival_documents: added file_path column.")
+                if "file_size" not in existing_columns:
+                    conn.execute(text("ALTER TABLE archival_documents ADD COLUMN file_size INTEGER;"))
+                    logger.info("Migrated archival_documents: added file_size column.")
     except Exception as e:
-        logger.debug(f"Schema check note: {e}")
+        logger.debug(f"Schema inspection note: {e}")
 
     # 2. Automatically seed database if empty
     db = SessionLocal()
