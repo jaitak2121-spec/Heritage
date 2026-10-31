@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { MapPin, Info, Navigation, ExternalLink, Sparkles } from 'lucide-react';
+import { MapPin, Info, Navigation, ExternalLink, Sparkles, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-import { heritageApi } from '../services/api';
+import { getApiErrorMessage, heritageApi } from '../services/api';
 
 // Fix leaflet icon paths cleanly in Vite ESM
 delete L.Icon.Default.prototype._getIconUrl;
@@ -66,6 +66,7 @@ const MapPage = () => {
   const [searchParams] = useSearchParams();
   const [sites, setSites] = useState(INITIAL_FALLBACK_SITES);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const siteIdParam = searchParams.get('site');
   const latParam = searchParams.get('lat');
@@ -89,13 +90,15 @@ const MapPage = () => {
     const loadMarkers = async () => {
       try {
         const markers = await heritageApi.getMapMarkers();
-        if (isMounted && markers && markers.length > 0) {
+        if (isMounted) {
           setSites(markers);
+          setError(null);
           setLoading(false);
         }
       } catch (err) {
         if (isMounted) {
           console.warn('Backend map markers unavailable, using fallback:', err);
+          setError(getApiErrorMessage(err, 'Live map locations are unavailable. Showing fallback locations.'));
           setLoading(false);
         }
       }
@@ -130,6 +133,12 @@ const MapPage = () => {
         <div className="grid lg:grid-cols-3 gap-8 items-start">
           {/* Map Column */}
           <div className="lg:col-span-2 space-y-4">
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
             <div className="bg-white rounded-2xl p-3 border border-parchment-dark/30 shadow-soft overflow-hidden">
               <MapContainer
                 center={[20.5937, 78.9629]}
@@ -180,7 +189,9 @@ const MapPage = () => {
                 <span>UNESCO & Significant Cultural Sites</span>
               </div>
               <div className="font-medium">
-                {loading ? 'Loading markers...' : `Showing ${sites.length} live database locations`}
+                {loading
+                  ? 'Loading markers...'
+                  : `Showing ${sites.length} ${error ? 'fallback' : 'live database'} locations`}
               </div>
             </div>
           </div>

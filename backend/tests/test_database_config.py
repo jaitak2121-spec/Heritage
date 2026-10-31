@@ -86,6 +86,15 @@ class TestDatabaseConfiguration(unittest.TestCase):
         self.assertIn("file_size", doc_cols)
         self.assertIn("extracted_text", doc_cols)
 
+    def test_07_cors_includes_production_and_configured_origins(self):
+        from app.main import get_allowed_origins
+
+        origins = get_allowed_origins("https://heritage-preview.vercel.app,http://localhost:9000/")
+
+        self.assertIn("https://heritage-pearl.vercel.app", origins)
+        self.assertIn("https://heritage-preview.vercel.app", origins)
+        self.assertIn("http://localhost:9000", origins)
+
 
 if __name__ == "__main__":
     unittest.main()

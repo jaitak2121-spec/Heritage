@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapPin, Calendar, Building, BookOpen, Image as ImageIcon, Download, Sparkles, ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
-import { heritageApi } from '../services/api';
+import { getApiErrorMessage, heritageApi } from '../services/api';
 
 const SiteDetailPage = () => {
   const { id } = useParams();
@@ -23,7 +23,7 @@ const SiteDetailPage = () => {
       } catch (err) {
         if (isMounted) {
           console.error(`Failed to fetch heritage site #${id}:`, err);
-          setError(`Unable to find or load heritage record #${id}.`);
+          setError(getApiErrorMessage(err, `Unable to load heritage record #${id}.`));
           setLoading(false);
         }
       }

@@ -14,7 +14,7 @@ import {
   Building,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { heritageApi } from '../services/api';
+import { getApiErrorMessage, heritageApi } from '../services/api';
 
 const UploadPage = () => {
   const [step, setStep] = useState(1); // 1: upload, 2: review, 3: confirm
@@ -63,6 +63,10 @@ const UploadPage = () => {
           if (docsData.status === 'fulfilled' && Array.isArray(docsData.value)) {
             setRecentDocuments(docsData.value);
           }
+          const failedRequest = [sitesData, docsData].find((result) => result.status === 'rejected');
+          if (failedRequest) {
+            setErrorMessage(getApiErrorMessage(failedRequest.reason, 'Unable to load archive metadata.'));
+          }
         }
       } catch (err) {
         console.warn('Initial data load warning:', err);
@@ -82,6 +86,7 @@ const UploadPage = () => {
       setRecentDocuments(data);
     } catch (err) {
       console.warn('Failed to refresh recent documents:', err);
+      setErrorMessage(getApiErrorMessage(err, 'Unable to refresh recent documents.'));
     } finally {
       setLoadingRecent(false);
     }
@@ -171,11 +176,7 @@ const UploadPage = () => {
     } catch (err) {
       setUploading(false);
       setUploadProgress(0);
-      const detail = err.response?.data?.detail;
-      const msg = typeof detail === 'string'
-        ? detail
-        : (err.message || 'Upload and text extraction failed.');
-      setErrorMessage(msg);
+      setErrorMessage(getApiErrorMessage(err, 'Upload and text extraction failed.'));
       console.error('Document upload error:', err);
     }
   };
@@ -204,8 +205,7 @@ const UploadPage = () => {
       refreshRecentDocuments();
     } catch (err) {
       setSaving(false);
-      const detail = err.response?.data?.detail;
-      setErrorMessage(typeof detail === 'string' ? detail : 'Failed to save corrected text.');
+      setErrorMessage(getApiErrorMessage(err, 'Failed to save corrected text.'));
       console.error('Update document error:', err);
     }
   };
@@ -225,7 +225,7 @@ const UploadPage = () => {
       }
     } catch (err) {
       console.error('Failed to delete document:', err);
-      alert('Could not delete document. Please try again.');
+      setErrorMessage(getApiErrorMessage(err, 'Could not delete the document.'));
     }
   };
 

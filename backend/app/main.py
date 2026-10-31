@@ -54,15 +54,26 @@ app = FastAPI(
 )
 
 # CORS Configuration
-origins_env = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "https://heritage-pearl.vercel.app",
 )
-origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+
+
+def get_allowed_origins(configured_origins: str | None = None) -> list[str]:
+    if configured_origins is None:
+        configured_origins = os.getenv("ALLOWED_ORIGINS", "")
+    extra_origins = [origin.strip().rstrip("/") for origin in configured_origins.split(",") if origin.strip()]
+    return list(dict.fromkeys((*DEFAULT_ALLOWED_ORIGINS, *extra_origins)))
+
+
+origins = get_allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins else ["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, MapPin, Calendar, Filter, ChevronRight, Image as ImageIcon, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { heritageApi } from '../services/api';
+import { getApiErrorMessage, heritageApi } from '../services/api';
 
 const ArchivePage = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +18,7 @@ const ArchivePage = () => {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Fetch sites from backend API
   useEffect(() => {
@@ -40,7 +41,8 @@ const ArchivePage = () => {
       } catch (err) {
         if (isMounted) {
           console.error('Failed to fetch heritage sites from backend:', err);
-          setError('Unable to connect to the heritage database. Please verify the backend is running.');
+          setSites([]);
+          setError(getApiErrorMessage(err, 'Unable to load heritage records.'));
           setLoading(false);
         }
       }
@@ -50,7 +52,7 @@ const ArchivePage = () => {
     return () => {
       isMounted = false;
     };
-  }, [searchTerm, selectedPeriod, selectedStyle, selectedRegion]);
+  }, [searchTerm, selectedPeriod, selectedStyle, selectedRegion, retryCount]);
 
   const periods = ['all', 'Ancient', 'Medieval', 'Mughal Era'];
   const styles = ['all', 'Indo-Islamic', 'Dravidian', 'Rock-Cut', 'Nagara', 'Kalinga'];
@@ -190,7 +192,7 @@ const ArchivePage = () => {
             <h3 className="font-serif font-bold text-lg mb-2">Database Connection Notice</h3>
             <p className="text-xs text-red-700 mb-5 leading-relaxed">{error}</p>
             <button
-              onClick={() => setSelectedPeriod((p) => p)}
+              onClick={() => setRetryCount((count) => count + 1)}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-maroon text-white rounded-xl text-xs font-semibold hover:bg-maroon-dark transition-colors shadow-xs"
             >
               <RefreshCw size={14} />

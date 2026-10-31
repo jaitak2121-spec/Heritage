@@ -12,7 +12,7 @@ import {
   Building,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { heritageApi } from '../services/api';
+import { getApiErrorMessage, heritageApi } from '../services/api';
 
 const AssistantPage = () => {
   const [message, setMessage] = useState('');
@@ -93,10 +93,10 @@ const AssistantPage = () => {
     } catch (err) {
       setLoading(false);
       console.error('Assistant error:', err);
-      const detail = err.response?.data?.detail;
-      const errorText = typeof detail === 'string'
-        ? detail
-        : 'The HeritageLens research service could not process your question. Please verify your connection or try again.';
+      const errorText = getApiErrorMessage(
+        err,
+        'The HeritageLens research service could not process your question.'
+      );
 
       setErrorMessage(errorText);
       // Append an error message bubble

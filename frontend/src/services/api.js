@@ -1,6 +1,43 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const normalizeApiBaseUrl = (value) => {
+  const baseUrl = value.trim().replace(/\/+$/, '');
+  return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+};
+
+const configuredApiUrl = import.meta.env.VITE_API_BASE_URL
+  || import.meta.env.VITE_API_URL
+  || 'http://localhost:8000';
+
+export const API_BASE_URL = normalizeApiBaseUrl(configuredApiUrl);
+
+const requireArray = (data, resourceName) => {
+  if (!Array.isArray(data)) {
+    throw new Error(`The API returned an invalid ${resourceName} response.`);
+  }
+  return data;
+};
+
+export const getApiErrorMessage = (error, fallbackMessage = 'The HeritageLens API request failed.') => {
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return `${fallbackMessage} Server response: ${detail}`;
+  }
+
+  if (error.response) {
+    return `${fallbackMessage} The server returned HTTP ${error.response.status}.`;
+  }
+
+  if (error.code === 'ECONNABORTED') {
+    return `${fallbackMessage} The request to ${API_BASE_URL} timed out.`;
+  }
+
+  if (error.request) {
+    return `${fallbackMessage} The browser could not reach ${API_BASE_URL}. Check the deployment URL and CORS configuration.`;
+  }
+
+  return error.message || fallbackMessage;
+};
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -14,7 +51,7 @@ export const heritageApi = {
   // Heritage Sites
   getSites: async (params = {}) => {
     const response = await apiClient.get('/sites', { params });
-    return response.data;
+    return requireArray(response.data, 'heritage sites');
   },
 
   getSiteById: async (id) => {
@@ -40,7 +77,7 @@ export const heritageApi = {
   // Map Markers
   getMapMarkers: async () => {
     const response = await apiClient.get('/map/markers');
-    return response.data;
+    return requireArray(response.data, 'map markers');
   },
 
   // Archival Documents & OCR
@@ -56,7 +93,7 @@ export const heritageApi = {
 
   getDocuments: async (params = {}) => {
     const response = await apiClient.get('/documents', { params });
-    return response.data;
+    return requireArray(response.data, 'documents');
   },
 
   getDocumentById: async (id) => {
