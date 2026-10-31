@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+@theme {
+  /* Approved HeritageLens Palette */
+  --color-parchment: #F2E7D2;
+  --color-parchment-light: #FAF4E8;
+  --color-parchment-dark: #E2D3B8;
+
+  --color-maroon: #681D2A;
+  --color-maroon-light: #832737;
+  --color-maroon-dark: #4D141E;
+
+  --color-vermillion: #B8463D;
+  --color-vermillion-light: #CF5C53;
+  --color-vermillion-dark: #97342C;
+
+  --color-terracotta: #B85D2B;
+  --color-terracotta-light: #D07644;
+  --color-terracotta-dark: #96471C;
+
+  --color-gold: #C49A5A;
+  --color-gold-light: #D9B37A;
+  --color-gold-dark: #A57F42;
+
+  --color-charcoal: #29231F;
+  --color-charcoal-light: #3D3530;
+  --color-charcoal-dark: #191513;
+
+  /* Legacy & Semantic Support Aliases */
+  --color-forest: #263B35;
+  --color-forest-dark: #1A2924;
+  --color-forest-light: #2F4A42;
+  --color-ivory: #F5EFE2;
+  --color-ivory-light: #FAF8F3;
+  --color-ivory-dark: #E8E2D5;
+  --color-stone: #8B7D6B;
+  --color-sage: #7A8F89;
+  --color-indigo: #34445B;
+
+  /* Typography */
+  --font-serif: "Playfair Display", "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  /* Elevation */
+  --shadow-soft: 0 4px 20px -2px rgba(41, 35, 31, 0.08);
+  --shadow-medium: 0 8px 30px -4px rgba(41, 35, 31, 0.12);
+  --shadow-lift: 0 16px 40px -6px rgba(41, 35, 31, 0.18);
+}
+
+:root {
+  --color-parchment: #F2E7D2;
+  --color-charcoal: #29231F;
+  --color-maroon: #681D2A;
+  --color-vermillion: #B8463D;
+  --color-terracotta: #B85D2B;
+  --color-gold: #C49A5A;
+}
+
+/* Base Body Styling */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-parchment);
+  color: var(--color-charcoal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-parchment);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-terracotta);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-terracotta-dark);
+}
+
+/* Image optimization */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Focus accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+/* Loading animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 211, 184, 0.2) 25%,
+    rgba(226, 211, 184, 0.5) 50%,
+    rgba(226, 211, 184, 0.2) 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Utility classes */
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
+
+.aspect-heritage {
+  aspect-ratio: 4/3;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

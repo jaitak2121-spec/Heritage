@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.env
+.venv
+venv
+heritagelens.db
+uploads/*
+!uploads/.gitkeep
+.DS_Store
