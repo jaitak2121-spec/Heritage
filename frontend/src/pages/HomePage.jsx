@@ -4,6 +4,22 @@ import { Search, MapPin, Archive, Upload, MessageSquare, ChevronRight, ArrowRigh
 import { Link, useNavigate } from 'react-router-dom';
 import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
+const HeritageWheel = () => (
+  <svg viewBox="0 0 240 240" className="h-full w-full" role="presentation">
+    <circle cx="120" cy="120" r="108" fill="rgba(41,35,31,0.28)" stroke="currentColor" strokeWidth="4" />
+    <circle cx="120" cy="120" r="94" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 7" />
+    <circle cx="120" cy="120" r="28" fill="rgba(196,154,90,0.22)" stroke="currentColor" strokeWidth="4" />
+    {Array.from({ length: 16 }, (_, index) => (
+      <g key={index} transform={`rotate(${index * 22.5} 120 120)`}>
+        <path d="M120 30 L126 88 L120 101 L114 88 Z" fill="currentColor" opacity="0.78" />
+        <circle cx="120" cy="21" r="4" fill="currentColor" />
+      </g>
+    ))}
+    <circle cx="120" cy="120" r="12" fill="currentColor" />
+    <circle cx="120" cy="120" r="5" fill="#29231f" />
+  </svg>
+);
+
 const HomePage = () => {
   const [heroSearch, setHeroSearch] = useState('');
   const navigate = useNavigate();
@@ -15,6 +31,10 @@ const HomePage = () => {
   const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '30%']);
   const titleOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
   const titleY = useTransform(scrollYProgress, [0, 0.3], ['0%', '-20%']);
+  const wheelX = useTransform(scrollYProgress, [0, 0.42], ['-18vw', '78vw']);
+  const wheelRotation = useTransform(scrollYProgress, [0, 0.42], [0, 760]);
+  const wheelScale = useTransform(scrollYProgress, [0, 0.22, 0.42], [0.72, 1, 0.82]);
+  const wheelOpacity = useTransform(scrollYProgress, [0, 0.04, 0.33, 0.42], [0, 0.82, 0.82, 0]);
 
   const handleHeroSearch = (e) => {
     e.preventDefault();
@@ -66,8 +86,17 @@ const HomePage = () => {
           <div className="absolute inset-12 rounded-full border border-dashed border-white/20" />
         </motion.div>
 
+        {/* A Konark-inspired chariot wheel rolls with the visitor's scroll. */}
         <motion.div
-          className="relative container mx-auto px-4 text-center text-white"
+          aria-hidden="true"
+          className="absolute -bottom-16 left-0 z-[1] h-48 w-48 md:h-64 md:w-64 text-gold drop-shadow-[0_18px_25px_rgba(25,21,19,0.45)] pointer-events-none"
+          style={{ x: wheelX, rotate: wheelRotation, scale: wheelScale, opacity: wheelOpacity }}
+        >
+          <HeritageWheel />
+        </motion.div>
+
+        <motion.div
+          className="relative z-10 container mx-auto px-4 text-center text-white"
           style={{ opacity: titleOpacity, y: titleY }}
           initial={{ opacity: 0, y: 30 }}
           animate={heroInView ? { opacity: 1, y: 0 } : {}}
