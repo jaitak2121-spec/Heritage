@@ -8,6 +8,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { getApiErrorMessage, heritageApi } from '../services/api';
+import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
 // Fix leaflet icon paths cleanly in Vite ESM
 delete L.Icon.Default.prototype._getIconUrl;
@@ -48,17 +49,17 @@ const INITIAL_FALLBACK_SITES = [
     architectural_style: 'Indo-Islamic',
     latitude: 27.1751,
     longitude: 78.0421,
-    image_url: 'https://images.unsplash.com/photo-1564507592333-c60657eea523?q=80&w=400',
+    image_url: '/images/sites/taj-mahal.jpg',
   },
   {
-    id: 5,
+    id: 6,
     name: 'Konark Sun Temple',
     description: 'Monumental 13th-century chariot of the Sun God Surya, famous for 24 carved stone wheels.',
     historical_period: 'Medieval · 13th Century',
     architectural_style: 'Kalinga Architecture',
     latitude: 19.8876,
     longitude: 86.0945,
-    image_url: 'https://images.unsplash.com/photo-1575719315416-8a6d3a4f0c56?q=80&w=400',
+    image_url: '/images/sites/konark-sun-temple.jpg',
   },
 ];
 
@@ -213,12 +214,13 @@ const MapPage = () => {
 
                 <div className="h-40 rounded-xl overflow-hidden mb-4 border border-parchment-dark/20 relative">
                   <img
-                    src={selectedSite.image_url}
+                    src={getSiteVisual(selectedSite).src}
                     alt={selectedSite.name}
                     className="w-full h-full object-cover"
+                    style={{ objectPosition: getSiteVisual(selectedSite).position }}
                     onError={(e) => {
                       e.currentTarget.onerror = null;
-                      e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/800px-Konarka_Temple.jpg';
+                      e.currentTarget.src = SITE_IMAGE_FALLBACK;
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-charcoal/80 via-transparent to-transparent" />
@@ -276,12 +278,13 @@ const MapPage = () => {
                       }`}
                     >
                       <img
-                        src={site.image_url}
+                        src={getSiteVisual(site).src}
                         alt={site.name}
                         className="w-12 h-12 rounded-lg object-cover shrink-0"
+                        style={{ objectPosition: getSiteVisual(site).position }}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
-                          e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/800px-Konarka_Temple.jpg';
+                          e.currentTarget.src = SITE_IMAGE_FALLBACK;
                         }}
                       />
                       <div className="flex-1 min-w-0">

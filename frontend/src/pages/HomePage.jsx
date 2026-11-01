@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { motion, useScroll, useTransform, useInView } from 'framer-motion';
 import { Search, MapPin, Archive, Upload, MessageSquare, ChevronRight, ArrowRight, Globe } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
 const HomePage = () => {
   const [heroSearch, setHeroSearch] = useState('');
@@ -27,7 +28,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-parchment text-charcoal font-sans">
       {/* Hero Section - Konark Sun Temple inspired */}
-      <section ref={heroRef} className="relative min-h-[calc(100vh-65px)] flex items-center justify-center overflow-hidden">
+      <section ref={heroRef} className="relative min-h-[calc(100vh-65px)] flex items-center justify-center overflow-hidden isolate">
         <motion.div
           className="absolute inset-0"
           style={{ y: heroY }}
@@ -37,12 +38,32 @@ const HomePage = () => {
         >
           {/* Konark Sun Temple wheel background */}
           <img
-            src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Konark_wheel.jpg/1920px-Konark_wheel.jpg"
-            alt="Konark Sun Temple wheel - Intricate Indian stone carvings"
+            src={getSiteVisual('Konark Sun Temple').src}
+            alt="Konark Sun Temple — monumental Kalinga architecture"
             className="w-full h-full object-cover"
-            style={{ objectPosition: 'center 30%' }}
+            style={{ objectPosition: getSiteVisual('Konark Sun Temple').position }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-charcoal/85 via-charcoal/40 to-parchment/10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-charcoal/90 via-charcoal/45 to-maroon/35" />
+          <div className="absolute inset-0 heritage-grain opacity-35" />
+        </motion.div>
+
+        <motion.div
+          aria-hidden="true"
+          className="absolute -left-28 top-24 h-80 w-80 rounded-full border border-gold/25"
+          animate={{ rotate: 360, scale: [1, 1.08, 1] }}
+          transition={{ rotate: { duration: 32, repeat: Infinity, ease: 'linear' }, scale: { duration: 6, repeat: Infinity } }}
+        >
+          <div className="absolute inset-8 rounded-full border border-dashed border-gold/30" />
+          <div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full bg-gold shadow-[0_0_28px_rgba(196,154,90,0.9)]" />
+        </motion.div>
+
+        <motion.div
+          aria-hidden="true"
+          className="absolute -right-32 bottom-16 h-96 w-96 rounded-full border border-white/15"
+          animate={{ rotate: -360 }}
+          transition={{ duration: 45, repeat: Infinity, ease: 'linear' }}
+        >
+          <div className="absolute inset-12 rounded-full border border-dashed border-white/20" />
         </motion.div>
 
         <motion.div
@@ -68,7 +89,7 @@ const HomePage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={heroInView ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.8, delay: 0.6 }}
-              className="text-5xl md:text-7xl lg:text-8xl font-serif font-bold mb-6 leading-tight"
+              className="text-5xl md:text-7xl lg:text-8xl font-serif font-bold mb-6 leading-[0.92] tracking-[-0.045em]"
             >
               <span className="block text-white">India's Heritage,</span>
               <motion.span
@@ -158,6 +179,20 @@ const HomePage = () => {
         </motion.div>
       </section>
 
+      <section aria-label="Archive themes" className="overflow-hidden border-y border-gold/20 bg-charcoal py-3 text-ivory">
+        <div className="heritage-marquee flex min-w-max items-center gap-8 text-[11px] font-semibold uppercase tracking-[0.28em]">
+          {[0, 1].map((copy) => (
+            <div key={copy} className="flex items-center gap-8" aria-hidden={copy === 1}>
+              {['Architecture', 'Epigraphy', 'Living monuments', 'Sacred geometry', 'Digital preservation', 'Regional memory'].map((item) => (
+                <span key={`${copy}-${item}`} className="flex items-center gap-8 whitespace-nowrap">
+                  {item}<span className="text-gold">✦</span>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Featured Heritage Collections - Manuscript Inspired */}
       <section className="py-24 bg-parchment">
         <div className="container mx-auto px-4">
@@ -182,34 +217,38 @@ const HomePage = () => {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
               {
+                id: 1,
                 title: 'Taj Mahal',
                 location: 'Agra, Uttar Pradesh',
                 period: 'Mughal Era · 1632–1653',
-                image: 'https://images.unsplash.com/photo-1564507592333-c60657eea523?q=80&w=800&auto=format&fit=crop&crop=center',
+                image: getSiteVisual('Taj Mahal'),
                 description: 'White marble mausoleum and UNESCO World Heritage Site.',
                 region: 'North India'
               },
               {
+                id: 9,
                 title: 'Khajuraho Temples',
                 location: 'Madhya Pradesh',
                 period: '10th–11th Century',
-                image: 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=800&auto=format&fit=crop&crop=center',
+                image: getSiteVisual('Khajuraho Temples'),
                 description: 'Group of Hindu and Jain temples with intricate sculptures.',
                 region: 'Central India'
               },
               {
+                id: 4,
                 title: 'Hampi Ruins',
                 location: 'Karnataka',
                 period: '14th–16th Century',
-                image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Wide_angle_of_Galigopuram_of_Virupaksha_Temple%2C_Hampi_%2804%29_%28cropped%29.jpg/1280px-Wide_angle_of_Galigopuram_of_Virupaksha_Temple%2C_Hampi_%2804%29_%28cropped%29.jpg',
+                image: getSiteVisual('Hampi Ruins'),
                 description: 'Ruins of the medieval Vijayanagara kingdom.',
                 region: 'South India'
               },
               {
+                id: 6,
                 title: 'Sun Temple, Konark',
                 location: 'Odisha',
                 period: '13th Century',
-                image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/1280px-Konarka_Temple.jpg',
+                image: getSiteVisual('Sun Temple, Konark'),
                 description: '13th-century Sun Temple shaped as a colossal chariot.',
                 region: 'East India'
               }
@@ -220,14 +259,24 @@ const HomePage = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
-                whileHover={{ y: -8, transition: { duration: 0.3 } }}
-                className="group bg-white rounded-2xl overflow-hidden shadow-soft hover:shadow-lift transition-all duration-300 border border-parchment-dark/20 cursor-pointer"
+                whileHover={{ y: -12, rotateX: 2, rotateY: index % 2 === 0 ? 1.5 : -1.5, transition: { duration: 0.3 } }}
+                className="museum-glint group relative bg-white rounded-[1.6rem] overflow-hidden shadow-soft hover:shadow-lift transition-all duration-300 border border-gold/20 cursor-pointer [transform-style:preserve-3d]"
               >
-                <div className="relative h-48 overflow-hidden">
+                <div className="relative h-56 overflow-hidden">
                   <img
-                    src={site.image}
+                    src={site.image.src}
                     alt={site.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                    style={{ objectPosition: site.image.position }}
+                    onError={(event) => { event.currentTarget.src = SITE_IMAGE_FALLBACK; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-charcoal/70 via-transparent to-transparent opacity-70 group-hover:opacity-40 transition-opacity duration-500" />
+                  <motion.div
+                    aria-hidden="true"
+                    className="absolute -bottom-12 -right-12 h-28 w-28 rounded-full border border-gold/60"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
                   />
                   <div className="absolute top-4 right-4 px-3 py-1 bg-white/95 backdrop-blur-sm rounded-full">
                     <span className="text-xs font-semibold text-charcoal tracking-wide">UNESCO</span>
@@ -251,7 +300,7 @@ const HomePage = () => {
                   </div>
                   <p className="text-charcoal/70 text-sm leading-relaxed mb-6">{site.description}</p>
                   <Link
-                    to={`/archive/${index + 1}`}
+                    to={`/archive/${site.id}`}
                     className="inline-flex items-center text-maroon font-semibold hover:text-maroon-dark transition-colors group/link"
                   >
                     <span className="mr-2">Explore Details</span>

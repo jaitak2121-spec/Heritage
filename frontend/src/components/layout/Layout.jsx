@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
 import { MapPin, Upload, Archive, MessageSquare, Home } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const Layout = () => {
   const location = useLocation();
@@ -16,13 +17,22 @@ const Layout = () => {
   return (
     <div className="min-h-screen flex flex-col bg-parchment text-charcoal font-sans selection:bg-maroon selection:text-white">
       {/* Universal Museum Header */}
-      <header className="sticky top-0 z-50 bg-parchment/95 backdrop-blur-md border-b border-parchment-dark/30 shadow-xs">
+      <motion.header
+        initial={{ y: -72, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+        className="sticky top-0 z-50 bg-parchment/90 backdrop-blur-xl border-b border-gold/20 shadow-xs"
+      >
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center space-x-3 group">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-terracotta to-vermillion flex items-center justify-center shadow-soft group-hover:scale-105 transition-transform duration-300">
-              <span className="text-white font-bold text-lg">🏛️</span>
-            </div>
+            <motion.div
+              whileHover={{ rotate: -7, scale: 1.08 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 16 }}
+              className="w-11 h-11 rounded-2xl overflow-hidden shadow-soft ring-1 ring-gold/30"
+            >
+              <img src="/favicon.svg" alt="" className="w-full h-full" />
+            </motion.div>
             <div>
               <h1 className="text-xl font-serif font-bold text-charcoal tracking-tight group-hover:text-maroon transition-colors">
                 HeritageLens
@@ -53,7 +63,13 @@ const Layout = () => {
             ))}
           </nav>
         </div>
-      </header>
+        <motion.div
+          className="h-px bg-gradient-to-r from-transparent via-gold to-transparent origin-center"
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: 1.1, delay: 0.25 }}
+        />
+      </motion.header>
 
       {/* Main Page Content */}
       <main className={`flex-1 w-full ${isHomePage ? '' : 'pb-20 md:pb-12'}`}>
@@ -87,8 +103,8 @@ const Layout = () => {
             {/* Column 1: Brand & Mission */}
             <div className="space-y-4">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-full bg-vermillion flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">🏛️</span>
+                <div className="w-10 h-10 rounded-xl overflow-hidden ring-1 ring-gold/30">
+                  <img src="/favicon.svg" alt="" className="w-full h-full" />
                 </div>
                 <div>
                   <h3 className="text-xl font-serif font-bold text-white">HeritageLens</h3>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapPin, Calendar, Building, BookOpen, Image as ImageIcon, Download, Sparkles, ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiErrorMessage, heritageApi } from '../services/api';
+import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
 const SiteDetailPage = () => {
   const { id } = useParams();
@@ -107,33 +108,43 @@ const SiteDetailPage = () => {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left Column: Visuals & Narrative */}
           <div className="lg:col-span-2 space-y-8">
-            <div className="bg-white rounded-2xl overflow-hidden shadow-soft border border-parchment-dark/30">
+            <div className="group relative bg-white rounded-[1.75rem] overflow-hidden shadow-lift border border-gold/20">
               <img
-                src={site.image_url}
+                src={getSiteVisual(site).src}
                 alt={site.name}
-                className="w-full h-96 object-cover"
+                className="w-full h-[28rem] object-cover transition-transform duration-[1600ms] group-hover:scale-[1.025]"
+                style={{ objectPosition: getSiteVisual(site).position }}
                 onError={(e) => {
                   e.currentTarget.onerror = null;
-                  e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/1280px-Konarka_Temple.jpg';
+                  e.currentTarget.src = SITE_IMAGE_FALLBACK;
                 }}
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-charcoal/70 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between text-white pointer-events-none">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-gold-light mb-2">Field record</p>
+                  <p className="font-serif text-2xl font-bold">{site.name}</p>
+                </div>
+                <span className="hidden sm:block text-xs text-white/75">{site.location_name}</span>
+              </div>
             </div>
 
             {/* Thumbnail Gallery */}
             {site.images && site.images.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {site.images.map((img) => (
+                {site.images.map((img, index) => (
                   <div
                     key={img.id}
                     className="rounded-xl overflow-hidden border border-parchment-dark/30 shadow-xs cursor-pointer hover:border-maroon transition-all group"
                   >
                     <img
-                      src={img.image_url}
+                      src={index === 0 ? getSiteVisual(site).src : img.image_url}
                       alt={img.caption || `${site.name} plate`}
                       className="w-full h-28 object-cover group-hover:scale-105 transition-transform duration-300"
+                      style={{ objectPosition: index === 0 ? getSiteVisual(site).position : 'center' }}
                       onError={(e) => {
                         e.currentTarget.onerror = null;
-                        e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Konark_wheel.jpg/800px-Konark_wheel.jpg';
+                        e.currentTarget.src = getSiteVisual(site).src || SITE_IMAGE_FALLBACK;
                       }}
                     />
                     {img.caption && (

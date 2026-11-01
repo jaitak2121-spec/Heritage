@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Search, MapPin, Calendar, Filter, ChevronRight, Image as ImageIcon, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getApiErrorMessage, heritageApi } from '../services/api';
+import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
 const ArchivePage = () => {
   const [searchParams] = useSearchParams();
@@ -221,25 +222,28 @@ const ArchivePage = () => {
         {/* Results Grid */}
         {!loading && !error && sites.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {sites.map((site) => (
+            {sites.map((site, index) => (
               <motion.div
                 key={site.id}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                whileHover={{ y: -4 }}
-                className="group bg-white rounded-2xl overflow-hidden border border-parchment-dark/30 shadow-soft hover:shadow-lift transition-all duration-300 flex flex-col"
+                transition={{ duration: 0.45, delay: Math.min(index * 0.045, 0.4) }}
+                whileHover={{ y: -9, rotateX: 1.5 }}
+                className="museum-glint group relative bg-white rounded-[1.4rem] overflow-hidden border border-gold/20 shadow-soft hover:shadow-lift transition-all duration-300 flex flex-col [transform-style:preserve-3d]"
               >
-                <div className="relative h-48 overflow-hidden bg-parchment-dark/40">
+                <div className="relative h-52 overflow-hidden bg-parchment-dark/40">
                   <img
-                    src={site.image_url}
+                    src={getSiteVisual(site).src}
                     alt={site.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                    style={{ objectPosition: getSiteVisual(site).position }}
                     onError={(e) => {
                       e.currentTarget.onerror = null;
-                      e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/800px-Konarka_Temple.jpg';
+                      e.currentTarget.src = SITE_IMAGE_FALLBACK;
                     }}
                   />
+                  <div className="absolute inset-0 bg-gradient-to-t from-charcoal/75 via-transparent to-transparent opacity-70 group-hover:opacity-45 transition-opacity duration-500" />
                   <div className="absolute top-3 right-3 px-2.5 py-1 bg-white/95 backdrop-blur-sm rounded-full shadow-xs">
                     <span className="text-[11px] font-semibold text-charcoal">UNESCO</span>
                   </div>
