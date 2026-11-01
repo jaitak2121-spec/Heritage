@@ -18,6 +18,32 @@ const requireArray = (data, resourceName) => {
   return data;
 };
 
+const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+const isTransientError = (error) => (
+  error.code === 'ECONNABORTED'
+  || !error.response
+  || error.response.status === 429
+  || error.response.status >= 500
+);
+
+const getWithColdStartRetry = async (url, config = {}) => {
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await apiClient.get(url, config);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientError(error) || attempt === maxAttempts) throw error;
+      await wait(attempt * 1200);
+    }
+  }
+
+  throw lastError;
+};
+
 export const getApiErrorMessage = (error, fallbackMessage = 'The HeritageLens API request failed.') => {
   const detail = error.response?.data?.detail;
   if (typeof detail === 'string' && detail.trim()) {
@@ -44,18 +70,20 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  // Render free services can need close to a minute to wake from an idle spin-down.
+  // Three safe GET attempts provide that window without retrying write operations.
+  timeout: 25000,
 });
 
 export const heritageApi = {
   // Heritage Sites
   getSites: async (params = {}) => {
-    const response = await apiClient.get('/sites', { params });
+    const response = await getWithColdStartRetry('/sites', { params });
     return requireArray(response.data, 'heritage sites');
   },
 
   getSiteById: async (id) => {
-    const response = await apiClient.get(`/sites/${id}`);
+    const response = await getWithColdStartRetry(`/sites/${id}`);
     return response.data;
   },
 
@@ -76,7 +104,7 @@ export const heritageApi = {
 
   // Map Markers
   getMapMarkers: async () => {
-    const response = await apiClient.get('/map/markers');
+    const response = await getWithColdStartRetry('/map/markers');
     return requireArray(response.data, 'map markers');
   },
 
@@ -92,12 +120,12 @@ export const heritageApi = {
   },
 
   getDocuments: async (params = {}) => {
-    const response = await apiClient.get('/documents', { params });
+    const response = await getWithColdStartRetry('/documents', { params });
     return requireArray(response.data, 'documents');
   },
 
   getDocumentById: async (id) => {
-    const response = await apiClient.get(`/documents/${id}`);
+    const response = await getWithColdStartRetry(`/documents/${id}`);
     return response.data;
   },
 
@@ -119,7 +147,7 @@ export const heritageApi = {
 
   // Health check
   checkHealth: async () => {
-    const response = await apiClient.get('/health');
+    const response = await getWithColdStartRetry('/health');
     return response.data;
   },
 };

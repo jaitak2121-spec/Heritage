@@ -5,12 +5,34 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getApiErrorMessage, heritageApi } from '../services/api';
 import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 
+const ARCHIVE_CACHE_KEY = 'heritagelens.archive.v1';
+
+const readCachedSites = () => {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(ARCHIVE_CACHE_KEY));
+    return Array.isArray(cached?.sites) ? cached : null;
+  } catch {
+    return null;
+  }
+};
+
+const filterCachedSites = (cachedSites, filters) => cachedSites.filter((site) => {
+  const query = filters.q?.toLowerCase();
+  const searchableText = `${site.name} ${site.location_name} ${site.description}`.toLowerCase();
+  const matchesQuery = !query || searchableText.includes(query);
+  const matchesPeriod = !filters.period || site.historical_period?.includes(filters.period);
+  const matchesStyle = !filters.style || site.architectural_style === filters.style;
+  const matchesRegion = !filters.region || site.region === filters.region;
+  return matchesQuery && matchesPeriod && matchesStyle && matchesRegion;
+});
+
 const ArchivePage = () => {
   const [searchParams] = useSearchParams();
   const searchParamQuery = searchParams.get('search') || '';
   const [userQuery, setUserQuery] = useState(null);
   const searchTerm = userQuery !== null ? userQuery : searchParamQuery;
   const setSearchTerm = (val) => setUserQuery(val);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
 
   const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [selectedStyle, setSelectedStyle] = useState('all');
@@ -19,32 +41,67 @@ const ArchivePage = () => {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [slowLoading, setSlowLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   // Fetch sites from backend API
   useEffect(() => {
     let isMounted = true;
+    const slowTimer = window.setTimeout(() => {
+      if (isMounted) setSlowLoading(true);
+    }, 3000);
+
     const fetchSites = async () => {
       setLoading(true);
       setError(null);
+      setNotice(null);
+      setSlowLoading(false);
       try {
         const params = {};
-        if (searchTerm.trim()) params.q = searchTerm.trim();
+        if (debouncedSearchTerm.trim()) params.q = debouncedSearchTerm.trim();
         if (selectedPeriod !== 'all') params.period = selectedPeriod;
         if (selectedStyle !== 'all') params.style = selectedStyle;
         if (selectedRegion !== 'all') params.region = selectedRegion;
 
         const data = await heritageApi.getSites(params);
         if (isMounted) {
+          window.clearTimeout(slowTimer);
           setSites(data);
+          if (Object.keys(params).length === 0) {
+            window.localStorage.setItem(ARCHIVE_CACHE_KEY, JSON.stringify({
+              sites: data,
+              savedAt: new Date().toISOString(),
+            }));
+          }
           setLoading(false);
+          setSlowLoading(false);
         }
       } catch (err) {
         if (isMounted) {
+          window.clearTimeout(slowTimer);
           console.error('Failed to fetch heritage sites from backend:', err);
-          setSites([]);
-          setError(getApiErrorMessage(err, 'Unable to load heritage records.'));
+          const cached = readCachedSites();
+          const params = {};
+          if (debouncedSearchTerm.trim()) params.q = debouncedSearchTerm.trim();
+          if (selectedPeriod !== 'all') params.period = selectedPeriod;
+          if (selectedStyle !== 'all') params.style = selectedStyle;
+          if (selectedRegion !== 'all') params.region = selectedRegion;
+
+          if (cached?.sites.length) {
+            setSites(filterCachedSites(cached.sites, params));
+            setNotice('The live archive is waking up. Showing the most recently saved records while we reconnect.');
+          } else {
+            setSites([]);
+            setError(getApiErrorMessage(err, 'Unable to load heritage records.'));
+          }
           setLoading(false);
+          setSlowLoading(false);
         }
       }
     };
@@ -52,8 +109,9 @@ const ArchivePage = () => {
     fetchSites();
     return () => {
       isMounted = false;
+      window.clearTimeout(slowTimer);
     };
-  }, [searchTerm, selectedPeriod, selectedStyle, selectedRegion, retryCount]);
+  }, [debouncedSearchTerm, selectedPeriod, selectedStyle, selectedRegion, retryCount]);
 
   const periods = ['all', 'Ancient', 'Medieval', 'Mughal Era'];
   const styles = ['all', 'Indo-Islamic', 'Dravidian', 'Rock-Cut', 'Nagara', 'Kalinga'];
@@ -159,7 +217,13 @@ const ArchivePage = () => {
 
           <div className="mt-4 pt-4 border-t border-parchment-dark/20 flex items-center justify-between text-xs text-charcoal/60">
             <div>
-              Showing <strong className="text-maroon font-semibold">{sites.length}</strong> live database records
+              {loading && <span>Connecting to the live archive…</span>}
+              {!loading && error && <span>Live archive temporarily unavailable</span>}
+              {!loading && !error && (
+                <span>
+                  Showing <strong className="text-maroon font-semibold">{sites.length}</strong> {notice ? 'saved archive' : 'live database'} records
+                </span>
+              )}
             </div>
             {(searchTerm || selectedPeriod !== 'all' || selectedStyle !== 'all' || selectedRegion !== 'all') && (
               <button
@@ -174,15 +238,39 @@ const ArchivePage = () => {
 
         {/* Loading State */}
         {loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <div key={i} className="bg-white rounded-2xl overflow-hidden border border-parchment-dark/30 p-4 space-y-3">
-                <div className="h-44 bg-parchment-dark/40 rounded-xl skeleton" />
-                <div className="h-4 w-3/4 bg-parchment-dark/40 rounded skeleton" />
-                <div className="h-3 w-1/2 bg-parchment-dark/30 rounded skeleton" />
-                <div className="h-10 bg-parchment-dark/20 rounded skeleton" />
+          <div>
+            {slowLoading && (
+              <div className="mb-6 flex items-center justify-center gap-3 rounded-2xl border border-gold/30 bg-white/70 px-5 py-3 text-sm text-charcoal/70 shadow-soft">
+                <RefreshCw size={16} className="animate-spin text-maroon" />
+                <span>Waking the digital archive — the first visit can take up to a minute.</span>
               </div>
-            ))}
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <div key={i} className="bg-white rounded-2xl overflow-hidden border border-parchment-dark/30 p-4 space-y-3">
+                  <div className="h-44 bg-parchment-dark/40 rounded-xl skeleton" />
+                  <div className="h-4 w-3/4 bg-parchment-dark/40 rounded skeleton" />
+                  <div className="h-3 w-1/2 bg-parchment-dark/30 rounded skeleton" />
+                  <div className="h-10 bg-parchment-dark/20 rounded skeleton" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loading && notice && (
+          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-gold/35 bg-white/80 px-5 py-4 text-sm text-charcoal/75 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle size={18} className="shrink-0 text-gold-dark" />
+              <span>{notice}</span>
+            </div>
+            <button
+              onClick={() => setRetryCount((count) => count + 1)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-maroon px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-maroon-dark"
+            >
+              <RefreshCw size={14} />
+              Reconnect
+            </button>
           </div>
         )}
 
