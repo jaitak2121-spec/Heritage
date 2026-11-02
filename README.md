@@ -71,12 +71,13 @@ python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Configure environment
 cp .env.example .env
 
-# Run FastAPI server (auto-seeds 11 monuments on startup)
+# Apply schema migrations, then run the API (the API seeds an empty archive)
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -126,6 +127,15 @@ DATABASE_URL=sqlite:///./heritagelens.db
 # DATABASE_URL=postgresql://postgres.[project-ref]:[URL-encoded-password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE_MB=25
+STORAGE_PROVIDER=local
+DOCUMENT_PROCESSING_MODE=inline
+DOCUMENT_PROCESSING_WORKERS=1
+
+# Required for all modifying curator operations
+CURATOR_PASSWORD=choose-a-strong-local-password
+CURATOR_TOKEN_SECRET=generate-at-least-32-random-characters
+CURATOR_LOGIN_MAX_ATTEMPTS=5
+CURATOR_LOGIN_WINDOW_SECONDS=300
 
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
@@ -156,10 +166,40 @@ OMNIROUTER_MODEL=google/gemini-2.0-flash
    - **Environment**: `Python`
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-3. In **Environment Variables**, add:
+3. Create a **private** Supabase Storage bucket named `heritage-documents`.
+4. In **Environment Variables**, add:
    - `DATABASE_URL`: Your Supabase Session Pooler connection URI from Step 1.
    - `ALLOWED_ORIGINS`: Your deployed frontend URL(s) and local preview URLs (comma-separated).
-4. On startup, HeritageLens automatically initializes all PostgreSQL tables (`heritage_sites`, `archival_documents`, `site_images`) via SQLAlchemy `create_all` and seeds the 11 initial Indian monuments if the database is fresh, without overwriting existing data on subsequent deployments.
+   - `STORAGE_PROVIDER=supabase`
+   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET=heritage-documents`
+   - `CURATOR_PASSWORD` and a random `CURATOR_TOKEN_SECRET` of at least 32 characters.
+   - `DOCUMENT_PROCESSING_MODE=background` and `DOCUMENT_PROCESSING_WORKERS=1` to return uploads promptly while OCR runs inside the backend process.
+5. Before the first deployment of this migration system, open a Render Shell and run the matching path below. Do not put credentials in the command.
+
+For a new, empty database:
+
+```bash
+cd /app
+alembic upgrade head
+```
+
+For the existing HeritageLens database whose three original tables already exist:
+
+```bash
+cd /app
+alembic stamp 0001_initial_schema
+alembic upgrade head
+```
+
+The stamp records the already-existing baseline without recreating it; the upgrade then adds only the Phase 1 document columns. The web process no longer creates or alters tables during startup.
+
+### Creating future migrations
+
+```bash
+cd backend
+alembic revision --autogenerate -m "describe the schema change"
+alembic upgrade head
+```
 
 ---
 
@@ -171,7 +211,7 @@ OMNIROUTER_MODEL=google/gemini-2.0-flash
 |---|---|---|
 | `GET` | `/api/sites` | List, search (`q`), and filter sites by `period`, `style`, and `region` |
 | `GET` | `/api/sites/{id}` | Get full site details with attached documents and photo gallery |
-| `POST` | `/api/sites` | Create a new heritage monument record |
+| `POST` | `/api/sites` | Create a new heritage monument record (curator) |
 | `PUT` | `/api/sites/{id}` | Update an existing heritage site |
 | `DELETE` | `/api/sites/{id}` | Delete a heritage site record |
 | `GET` | `/api/map/markers` | Lightweight coordinate markers for interactive map rendering |
@@ -180,11 +220,22 @@ OMNIROUTER_MODEL=google/gemini-2.0-flash
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/documents/upload` | Upload PDF or image for PyMuPDF/Tesseract OCR extraction |
+| `POST` | `/api/documents/upload` | Upload PDF or image for PyMuPDF/Tesseract OCR extraction (curator) |
 | `GET` | `/api/documents` | List all digitized archival documents |
 | `GET` | `/api/documents/{id}` | Retrieve document metadata and extracted text |
+| `GET` | `/api/documents/{id}/download` | Download a local original or redirect to a short-lived signed URL |
 | `PUT` | `/api/documents/{id}` | Save user-corrected transcribed text |
 | `DELETE` | `/api/documents/{id}` | Delete document record and remove physical file from disk |
+| `GET` | `/api/search?q=...` | Search site metadata and extracted/corrected document text |
+| `POST` | `/api/auth/login` | Exchange the curator password for a time-limited bearer session |
+| `GET` | `/api/audit` | Read the protected curator authentication/mutation audit trail |
+| `GET` | `/api/ready` | Verify database and configured storage readiness |
+
+Write routes use a single shared curator password and stateless signed session. Login attempts are bounded per backend process and authentication/mutation events are persisted without storing raw client addresses. This is appropriate for a hackathon prototype but does not provide individual accounts, role-based permissions, distributed rate limiting, or immediate single-token revocation. Rotate `CURATOR_TOKEN_SECRET` to invalidate all sessions.
+
+Archive search uses native PostgreSQL full-text search with migration-managed GIN indexes in production. SQLite retains a portable case-insensitive substring search for local development.
+
+Document processing defaults to `inline` for predictable local development and tests. In `background` mode, original files and an `uploaded` state are committed before work is submitted. Pending `uploaded` or `processing` records are resubmitted when the application starts, so an interrupted process does not silently lose the workflow state. This remains an in-process executor rather than a distributed job queue; run a single Render web worker for this mode.
 
 ### AI Heritage Assistant
 
@@ -196,11 +247,14 @@ OMNIROUTER_MODEL=google/gemini-2.0-flash
 
 ## 🧪 Testing & Verification
 
-Run the complete automated test discovery:
+Run the complete automated verification suite:
 
 ```bash
-# Backend test suite (22 unit & integration tests)
+# Backend unit and integration tests
 cd backend
+test_dir=$(mktemp -d /tmp/heritagelens-tests.XXXXXX)
+export DATABASE_URL="sqlite:///$test_dir/test.db"
+alembic upgrade head
 python3 -m unittest discover tests
 
 # Frontend linting (oxlint)
@@ -209,7 +263,17 @@ npm run lint
 
 # Frontend production build
 npm run build
+
+# First-time browser installation, then isolated browser acceptance tests
+npx playwright install chromium
+npm run test:e2e
 ```
+
+The Playwright suite starts its own FastAPI and Vite servers, migrates and seeds a
+temporary SQLite database, uses temporary local document storage, and does not
+touch development or production data. It verifies public archive full-text
+search and direct-route refresh, curator access and logout, and a background PDF
+upload through extraction, review, approval, and deletion.
 
 ---
 

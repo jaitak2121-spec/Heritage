@@ -11,6 +11,7 @@ from app.database import engine, Base, SessionLocal
 from app.models.heritage_site import HeritageSite
 from app.models.archival_document import ArchivalDocument
 from app.services.seed import seed_database
+from app.services.storage import LocalDocumentStorage
 from app.routers.documents import (
     upload_document,
     list_documents,
@@ -74,6 +75,10 @@ class TestDocumentDigitizationPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.title, "Brihadisvara Architectural Survey")
         self.assertEqual(res.file_type, "PDF")
         self.assertEqual(res.method, "pymupdf")
+        self.assertEqual(res.processing_status, "extracted")
+        self.assertEqual(res.review_status, "needs_review")
+        self.assertEqual(res.page_count, 1)
+        self.assertIsNone(res.ocr_confidence)
         self.assertIn("vimana rises 66 meters", res.extracted_text)
         print(f"✓ test_01_upload_pdf_with_selectable_text passed: Doc #{res.id} extracted via PyMuPDF")
 
@@ -173,7 +178,7 @@ class TestDocumentDigitizationPipeline(unittest.IsolatedAsyncioTestCase):
             await upload_document(file=upload_file, db=self.db)
 
         self.assertEqual(ctx.exception.status_code, 413)
-        self.assertIn("exceeds the maximum allowed limit of 25 MB", ctx.exception.detail)
+        self.assertIn("exceeds the 25 MB limit", ctx.exception.detail)
         print("✓ test_05_oversized_file passed: rejected 26MB file with HTTP 413")
 
     def test_06_list_and_get_document(self):
@@ -192,12 +197,15 @@ class TestDocumentDigitizationPipeline(unittest.IsolatedAsyncioTestCase):
         """Test saving user-corrected text on an existing document."""
         update_payload = DocumentUpdate(
             title="Brihadisvara Epigraph Verified",
-            corrected_text="VERIFIED INSCRIPTION: Granite vimana octagonal sikhara calibrated to 1010 CE."
+            corrected_text="VERIFIED INSCRIPTION: Granite vimana octagonal sikhara calibrated to 1010 CE.",
+            review_status="approved",
         )
 
         updated = update_document(id=self.created_pdf_doc_id, payload=update_payload, db=self.db)
         self.assertEqual(updated.title, "Brihadisvara Epigraph Verified")
         self.assertEqual(updated.corrected_text, "VERIFIED INSCRIPTION: Granite vimana octagonal sikhara calibrated to 1010 CE.")
+        self.assertEqual(updated.processing_status, "extracted")
+        self.assertEqual(updated.review_status, "approved")
         print(f"✓ test_07_save_corrected_text passed: updated doc #{self.created_pdf_doc_id} with verified text")
 
     def test_08_search_phrase_in_extracted_text(self):
@@ -219,7 +227,7 @@ class TestDocumentDigitizationPipeline(unittest.IsolatedAsyncioTestCase):
         """Test document deletion and physical storage cleanup."""
         doc = self.db.query(ArchivalDocument).filter(ArchivalDocument.id == self.created_img_doc_id).first()
         self.assertIsNotNone(doc)
-        stored_path = doc.file_path
+        stored_path = LocalDocumentStorage().download_target(doc.storage_key).local_path
         self.assertTrue(os.path.exists(stored_path), f"File {stored_path} should exist on disk before deletion")
 
         # Delete image doc
@@ -230,12 +238,32 @@ class TestDocumentDigitizationPipeline(unittest.IsolatedAsyncioTestCase):
         # Delete PDF doc
         pdf_doc = self.db.query(ArchivalDocument).filter(ArchivalDocument.id == self.created_pdf_doc_id).first()
         if pdf_doc:
-            pdf_path = pdf_doc.file_path
+            pdf_path = LocalDocumentStorage().download_target(pdf_doc.storage_key).local_path
             delete_document(id=self.created_pdf_doc_id, db=self.db)
             if pdf_path:
                 self.assertFalse(os.path.exists(pdf_path))
 
         print(f"✓ test_09_delete_document_and_cleanup passed: docs #{self.created_img_doc_id} and #{self.created_pdf_doc_id} cleanly deleted")
+
+    async def test_10_background_mode_returns_persisted_queued_record(self):
+        pdf = pymupdf.open()
+        page = pdf.new_page()
+        page.insert_text((50, 72), "BACKGROUND PROCESSING TEST")
+        payload = pdf.tobytes()
+        pdf.close()
+        upload_file = UploadFile(
+            file=io.BytesIO(payload), filename="background_test.pdf",
+            headers={"content-type": "application/pdf"},
+        )
+        with patch("app.routers.documents.processing_mode", return_value="background"), patch(
+            "app.routers.documents.submit_document_processing", return_value=True
+        ) as submit:
+            response = await upload_document(file=upload_file, title="Background Test", db=self.db)
+
+        self.assertEqual(response.processing_status, "uploaded")
+        self.assertIsNone(response.extracted_text)
+        submit.assert_called_once_with(response.id)
+        delete_document(id=response.id, db=self.db)
 
 
 if __name__ == "__main__":

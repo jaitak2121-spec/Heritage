@@ -37,6 +37,11 @@ class ArchivalDocumentResponse(ArchivalDocumentBase):
     id: int
     site_id: Optional[int] = None
     created_at: datetime
+    processing_status: str = "uploaded"
+    review_status: str = "unreviewed"
+    ocr_method: Optional[str] = None
+    page_count: Optional[int] = None
+    file_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,4 +1,5 @@
 from typing import List, Optional
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -13,6 +14,9 @@ from app.schemas.site import (
     HeritageSiteListResponse,
     HeritageSiteDetailResponse,
 )
+from app.security import CuratorIdentity, require_curator
+from app.services.storage import StorageConfigurationError, StorageOperationError, get_document_storage
+from app.services.audit import add_audit_event
 
 router = APIRouter(prefix="/api/sites", tags=["Heritage Sites"])
 
@@ -111,19 +115,23 @@ def get_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=HeritageSiteDetailResponse, status_code=status.HTTP_201_CREATED)
-def create_site(site_in: HeritageSiteCreate, db: Session = Depends(get_db)):
+def create_site(site_in: HeritageSiteCreate, db: Session = Depends(get_db),
+                _curator: CuratorIdentity = Depends(require_curator)):
     """
     Create a new heritage site record.
     """
     new_site = HeritageSite(**site_in.model_dump())
     db.add(new_site)
+    db.flush()
+    add_audit_event(db, action="site.create", resource_type="heritage_site", resource_id=new_site.id)
     db.commit()
     db.refresh(new_site)
     return new_site
 
 
 @router.put("/{site_id}", response_model=HeritageSiteDetailResponse)
-def update_site(site_id: int, site_in: HeritageSiteUpdate, db: Session = Depends(get_db)):
+def update_site(site_id: int, site_in: HeritageSiteUpdate, db: Session = Depends(get_db),
+                _curator: CuratorIdentity = Depends(require_curator)):
     """
     Update an existing heritage site record.
     """
@@ -138,13 +146,18 @@ def update_site(site_id: int, site_in: HeritageSiteUpdate, db: Session = Depends
     for field, value in update_data.items():
         setattr(site, field, value)
 
+    add_audit_event(
+        db, action="site.update", resource_type="heritage_site", resource_id=site.id,
+        details={"fields": sorted(update_data)},
+    )
     db.commit()
     db.refresh(site)
     return site
 
 
 @router.delete("/{site_id}", status_code=status.HTTP_200_OK)
-def delete_site(site_id: int, db: Session = Depends(get_db)):
+def delete_site(site_id: int, db: Session = Depends(get_db),
+                _curator: CuratorIdentity = Depends(require_curator)):
     """
     Delete a heritage site and its cascading documents and images.
     """
@@ -155,6 +168,21 @@ def delete_site(site_id: int, db: Session = Depends(get_db)):
             detail=f"Heritage site with ID {site_id} not found."
         )
 
+    # A database cascade cannot remove durable objects. Refuse the destructive
+    # operation if any associated object cannot be cleaned up.
+    try:
+        for document in site.documents:
+            if document.storage_key:
+                get_document_storage(document.storage_provider).delete(document.storage_key)
+            elif document.file_path and Path(document.file_path).is_file():
+                Path(document.file_path).unlink()
+    except (OSError, StorageConfigurationError, StorageOperationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Associated document cleanup failed; the site and database records were preserved.",
+        ) from exc
+
+    add_audit_event(db, action="site.delete", resource_type="heritage_site", resource_id=site.id)
     db.delete(site)
     db.commit()
     return {"message": "Heritage site deleted successfully", "id": site_id}

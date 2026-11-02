@@ -304,7 +304,12 @@ def seed_database(db: Session) -> int:
         db.flush()  # Populates site.id
 
         for doc_dict in docs_data:
-            doc = ArchivalDocument(site_id=site.id, **doc_dict)
+            doc = ArchivalDocument(
+                site_id=site.id,
+                processing_status="extracted",
+                review_status="approved",
+                **doc_dict,
+            )
             db.add(doc)
 
         for img_dict in images_data:

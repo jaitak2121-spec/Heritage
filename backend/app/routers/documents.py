@@ -1,346 +1,243 @@
+import logging
+import mimetypes
 import os
 import re
 import uuid
-import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.archival_document import ArchivalDocument
 from app.models.heritage_site import HeritageSite
-from app.schemas.document import (
-    DocumentUploadResponse,
-    DocumentUpdate,
-    DocumentListItem,
-    DocumentDetail,
+from app.schemas.document import DocumentDetail, DocumentListItem, DocumentUpdate, DocumentUploadResponse
+from app.security import CuratorIdentity, require_curator
+from app.services.storage import (
+    StorageConfigurationError,
+    StorageOperationError,
+    get_document_storage,
 )
-from app.services.extraction import (
-    extract_document_text,
-    OCRUnavailableError,
-    ExtractionError,
-)
+from app.services.audit import add_audit_event
+from app.services.document_processing import processing_mode, process_document, submit_document_processing
 
 logger = logging.getLogger("heritagelens.documents")
-
 router = APIRouter(prefix="/api/documents", tags=["Archival Documents"])
 
-# Upload directory configuration
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-UPLOADS_DIR = BASE_DIR / "uploads"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
-# 25 MB max upload size
-MAX_FILE_SIZE = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif"}
+REVIEW_STATES = {"unreviewed", "needs_review", "approved"}
+
+
+def _max_file_size() -> int:
+    try:
+        megabytes = int(os.getenv("MAX_FILE_SIZE_MB", "25"))
+    except ValueError:
+        megabytes = 25
+    return max(1, megabytes) * 1024 * 1024
+
+
+def _file_url(doc: ArchivalDocument) -> str | None:
+    return f"/api/documents/{doc.id}/download" if (doc.storage_key or doc.file_path) else None
+
+
+def _document_detail(doc: ArchivalDocument, site_name: str | None = None) -> DocumentDetail:
+    return DocumentDetail(
+        id=doc.id, site_id=doc.site_id, site_name=site_name, title=doc.title,
+        file_type=doc.file_type, original_filename=doc.original_filename,
+        file_size=doc.file_size, file_url=_file_url(doc), extracted_text=doc.extracted_text,
+        corrected_text=doc.corrected_text, storage_provider=doc.storage_provider,
+        processing_status=doc.processing_status, review_status=doc.review_status,
+        ocr_method=doc.ocr_method, extraction_language=doc.extraction_language,
+        page_count=doc.page_count, ocr_confidence=doc.ocr_confidence,
+        processing_error=doc.processing_error, processing_started_at=doc.processing_started_at,
+        processing_completed_at=doc.processing_completed_at, reviewed_at=doc.reviewed_at,
+        updated_at=doc.updated_at, created_at=doc.created_at,
+    )
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    file: UploadFile = File(..., description="Archival document file (PDF, PNG, JPG/JPEG)"),
-    site_id: Optional[int] = Form(None, description="Optional heritage site identifier to attach document to"),
-    title: Optional[str] = Form(None, description="Optional title; defaults to formatted filename"),
+    file: UploadFile = File(...),
+    site_id: Optional[int] = Form(None),
+    title: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    _curator: CuratorIdentity = Depends(require_curator),
 ):
-    """
-    Upload and digitize an archival document or historical image.
-    Extracts text using PyMuPDF for vector PDFs and Tesseract OCR for scanned records/images.
-    """
+    """Persist an original, then extract text while recording durable processing state."""
     if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file selected for upload.")
-
-    # 1. Validate file extension
+        raise HTTPException(status_code=400, detail="No file selected for upload.")
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file format '{suffix}'. Accepted formats are PDF (.pdf), PNG (.png), and JPEG (.jpg, .jpeg).",
-        )
+        raise HTTPException(status_code=400, detail=f"Unsupported file format '{suffix}'.")
 
-    # 2. Validate site_id if provided
     valid_site_id = site_id if isinstance(site_id, int) else None
     site = None
     if valid_site_id is not None:
         site = db.query(HeritageSite).filter(HeritageSite.id == valid_site_id).first()
         if not site:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Heritage site with ID {valid_site_id} was not found in the archive database.",
-            )
+            raise HTTPException(status_code=404, detail=f"Heritage site with ID {valid_site_id} was not found.")
 
-    # 3. Read file content and validate size
     try:
         content = await file.read()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read uploaded file: {str(e)}",
-        )
-
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Failed to read uploaded file.") from exc
     file_size = len(content)
     if file_size == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded file is empty (0 bytes).",
-        )
-    if file_size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File size ({file_size / (1024 * 1024):.1f} MB) exceeds the maximum allowed limit of 25 MB.",
-        )
+        raise HTTPException(status_code=400, detail="The uploaded file is empty (0 bytes).")
+    max_file_size = _max_file_size()
+    if file_size > max_file_size:
+        raise HTTPException(status_code=413, detail=f"File exceeds the {max_file_size // (1024 * 1024)} MB limit.")
 
-    # 4. Save file safely to disk
-    clean_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", file.filename)
-    unique_filename = f"{uuid.uuid4().hex[:12]}_{clean_name}"
-    stored_path = UPLOADS_DIR / unique_filename
-
+    clean_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", Path(file.filename).name)
+    now = datetime.now(timezone.utc)
+    object_key = f"documents/{now:%Y/%m}/{uuid.uuid4().hex}_{clean_name}"
     try:
-        with open(stored_path, "wb") as f:
-            f.write(content)
-    except Exception as e:
-        logger.error(f"Failed to write file to disk: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not persist uploaded file to storage: {str(e)}",
-        )
+        storage = get_document_storage()
+        storage.store(object_key, content, file.content_type or mimetypes.guess_type(file.filename)[0])
+    except (StorageConfigurationError, StorageOperationError) as exc:
+        logger.error("Document storage failed: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # 5. Extract text via modular pipeline
-    try:
-        extraction_res = extract_document_text(stored_path, file.filename)
-    except OCRUnavailableError as ocr_err:
-        # Clean up stored file if OCR was required but unavailable
-        if stored_path.exists():
-            try:
-                stored_path.unlink()
-            except OSError:
-                pass
-        logger.warning(f"OCR dependency unavailable: {ocr_err}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(ocr_err),
-        )
-    except ExtractionError as ext_err:
-        if stored_path.exists():
-            try:
-                stored_path.unlink()
-            except OSError:
-                pass
-        logger.error(f"Text extraction failed: {ext_err}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(ext_err),
-        )
-    except Exception as e:
-        if stored_path.exists():
-            try:
-                stored_path.unlink()
-            except OSError:
-                pass
-        logger.exception("Unexpected error in document extraction pipeline")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected extraction error: {str(e)}",
-        )
-
-    valid_title = title.strip() if (isinstance(title, str) and title.strip()) else None
-    doc_title = valid_title if valid_title else file.filename.rsplit(".", 1)[0].replace("_", " ").title()
-    file_type_label = "PDF" if suffix == ".pdf" else "Image"
-
+    valid_title = title.strip() if isinstance(title, str) and title.strip() else None
     new_doc = ArchivalDocument(
-        site_id=valid_site_id,
-        title=doc_title,
-        file_type=file_type_label,
-        original_filename=file.filename,
-        file_path=str(stored_path),
-        file_size=file_size,
-        extracted_text=extraction_res.get("text", ""),
-        corrected_text=None,
+        site_id=valid_site_id, title=valid_title or Path(file.filename).stem.replace("_", " ").title(),
+        file_type="PDF" if suffix == ".pdf" else "Image", original_filename=file.filename,
+        file_path=None, file_size=file_size, storage_provider=storage.provider_name,
+        storage_key=object_key, processing_status="uploaded", review_status="unreviewed",
     )
+    try:
+        db.add(new_doc)
+        db.flush()
+        add_audit_event(
+            db, action="document.upload", resource_type="archival_document", resource_id=new_doc.id,
+            details={"storage_provider": storage.provider_name, "file_type": new_doc.file_type},
+        )
+        db.commit()
+        db.refresh(new_doc)
+    except Exception as exc:
+        db.rollback()
+        try:
+            storage.delete(object_key)
+        except StorageOperationError:
+            logger.exception("Could not clean up object after database failure")
+        raise HTTPException(status_code=500, detail="Document metadata could not be saved.") from exc
 
-    db.add(new_doc)
-    db.commit()
-    db.refresh(new_doc)
+    if processing_mode() == "background":
+        submit_document_processing(new_doc.id)
+        message = "Original stored securely and queued for text extraction."
+        method = None
+    else:
+        outcome = process_document(new_doc.id, db=db)
+        db.expire_all()
+        new_doc = db.query(ArchivalDocument).filter(ArchivalDocument.id == new_doc.id).one()
+        if not outcome.success:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Original stored as document #{new_doc.id}, but processing failed: {outcome.message}",
+            )
+        message = outcome.message
+        method = outcome.method
 
     return DocumentUploadResponse(
-        id=new_doc.id,
-        site_id=new_doc.site_id,
-        site_name=site.name if site else None,
-        title=new_doc.title,
-        file_type=new_doc.file_type,
-        original_filename=new_doc.original_filename,
-        file_size=new_doc.file_size,
-        extracted_text=new_doc.extracted_text,
-        corrected_text=new_doc.corrected_text,
-        created_at=new_doc.created_at,
-        method=extraction_res.get("method"),
-        message=extraction_res.get("message"),
+        **_document_detail(new_doc, site.name if site else None).model_dump(),
+        method=method, message=message,
     )
 
 
 @router.get("", response_model=List[DocumentListItem])
-def list_documents(
-    site_id: Optional[int] = Query(None, description="Filter documents by heritage site ID"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    """
-    List uploaded archival documents with site associations and text lengths.
-    """
-    skip_val = skip if isinstance(skip, int) else 0
-    limit_val = limit if isinstance(limit, int) else 50
+def list_documents(site_id: Optional[int] = Query(None), skip: int = Query(0, ge=0),
+                   limit: int = Query(50, ge=1, le=100), db: Session = Depends(get_db)):
+    query = db.query(ArchivalDocument, HeritageSite.name.label("site_name")).outerjoin(
+        HeritageSite, HeritageSite.id == ArchivalDocument.site_id)
+    if isinstance(site_id, int):
+        query = query.filter(ArchivalDocument.site_id == site_id)
+    results = query.order_by(ArchivalDocument.created_at.desc()).offset(skip if isinstance(skip, int) else 0).limit(
+        limit if isinstance(limit, int) else 50).all()
+    return [DocumentListItem(
+        id=doc.id, site_id=doc.site_id, site_name=site_name, title=doc.title,
+        file_type=doc.file_type, original_filename=doc.original_filename, file_size=doc.file_size,
+        created_at=doc.created_at, has_corrected_text=bool(doc.corrected_text and doc.corrected_text.strip()),
+        extracted_length=len(doc.extracted_text or ""), processing_status=doc.processing_status,
+        review_status=doc.review_status, ocr_method=doc.ocr_method,
+    ) for doc, site_name in results]
 
-    query = db.query(ArchivalDocument, HeritageSite.name.label("site_name"))\
-              .outerjoin(HeritageSite, HeritageSite.id == ArchivalDocument.site_id)
 
-    valid_site_filter = site_id if isinstance(site_id, int) else None
-    if valid_site_filter:
-        query = query.filter(ArchivalDocument.site_id == valid_site_filter)
-
-    results = query.order_by(ArchivalDocument.created_at.desc()).offset(skip_val).limit(limit_val).all()
-
-    items = []
-    for doc, site_name in results:
-        items.append(
-            DocumentListItem(
-                id=doc.id,
-                site_id=doc.site_id,
-                site_name=site_name,
-                title=doc.title,
-                file_type=doc.file_type,
-                original_filename=doc.original_filename,
-                file_size=getattr(doc, "file_size", None),
-                created_at=doc.created_at,
-                has_corrected_text=bool(doc.corrected_text and doc.corrected_text.strip()),
-                extracted_length=len(doc.extracted_text) if doc.extracted_text else 0,
-            )
-        )
-    return items
+@router.get("/{id}/download")
+def download_document(id: int, db: Session = Depends(get_db)):
+    doc = db.query(ArchivalDocument).filter(ArchivalDocument.id == id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Archival document #{id} not found.")
+    if doc.storage_key:
+        try:
+            target = get_document_storage(doc.storage_provider).download_target(doc.storage_key)
+        except (StorageConfigurationError, StorageOperationError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if target.redirect_url:
+            return RedirectResponse(target.redirect_url, status_code=307)
+        return FileResponse(target.local_path, filename=doc.original_filename)
+    if doc.file_path and Path(doc.file_path).is_file():
+        return FileResponse(doc.file_path, filename=doc.original_filename)
+    raise HTTPException(status_code=404, detail="The original file is not available.")
 
 
 @router.get("/{id}", response_model=DocumentDetail)
-def get_document(
-    id: int,
-    db: Session = Depends(get_db),
-):
-    """
-    Retrieve full details and extracted/corrected text of a specific archival document.
-    """
-    res = db.query(ArchivalDocument, HeritageSite.name.label("site_name"))\
-            .outerjoin(HeritageSite, HeritageSite.id == ArchivalDocument.site_id)\
-            .filter(ArchivalDocument.id == id)\
-            .first()
-
-    if not res:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Archival document #{id} not found.",
-        )
-
-    doc, site_name = res
-    file_url = None
-    if doc.file_path and os.path.exists(doc.file_path):
-        filename = Path(doc.file_path).name
-        file_url = f"/uploads/{filename}"
-
-    return DocumentDetail(
-        id=doc.id,
-        site_id=doc.site_id,
-        site_name=site_name,
-        title=doc.title,
-        file_type=doc.file_type,
-        original_filename=doc.original_filename,
-        file_size=getattr(doc, "file_size", None),
-        file_url=file_url,
-        extracted_text=doc.extracted_text,
-        corrected_text=doc.corrected_text,
-        created_at=doc.created_at,
-    )
+def get_document(id: int, db: Session = Depends(get_db)):
+    result = db.query(ArchivalDocument, HeritageSite.name.label("site_name")).outerjoin(
+        HeritageSite, HeritageSite.id == ArchivalDocument.site_id).filter(ArchivalDocument.id == id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Archival document #{id} not found.")
+    return _document_detail(result[0], result[1])
 
 
 @router.put("/{id}", response_model=DocumentDetail)
-def update_document(
-    id: int,
-    payload: DocumentUpdate,
-    db: Session = Depends(get_db),
-):
-    """
-    Save user-corrected extracted text or update document title/site association.
-    """
+def update_document(id: int, payload: DocumentUpdate, db: Session = Depends(get_db),
+                    _curator: CuratorIdentity = Depends(require_curator)):
     doc = db.query(ArchivalDocument).filter(ArchivalDocument.id == id).first()
     if not doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Archival document #{id} not found.",
-        )
-
+        raise HTTPException(status_code=404, detail=f"Archival document #{id} not found.")
     if payload.site_id is not None:
         site = db.query(HeritageSite).filter(HeritageSite.id == payload.site_id).first()
         if not site:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Heritage site #{payload.site_id} does not exist.",
-            )
+            raise HTTPException(status_code=404, detail=f"Heritage site #{payload.site_id} does not exist.")
         doc.site_id = payload.site_id
-
     if payload.title is not None and payload.title.strip():
         doc.title = payload.title.strip()
-
     if payload.corrected_text is not None:
         doc.corrected_text = payload.corrected_text
-
+    if payload.review_status is not None:
+        if payload.review_status not in REVIEW_STATES:
+            raise HTTPException(status_code=422, detail="Invalid review status.")
+        doc.review_status = payload.review_status
+        if payload.review_status == "approved":
+            doc.reviewed_at = datetime.now(timezone.utc)
+    changed_fields = sorted(payload.model_dump(exclude_unset=True))
+    add_audit_event(
+        db, action="document.update", resource_type="archival_document", resource_id=doc.id,
+        details={"fields": changed_fields},
+    )
     db.commit()
     db.refresh(doc)
-
-    site_name = doc.site.name if doc.site else None
-    file_url = None
-    if doc.file_path and os.path.exists(doc.file_path):
-        filename = Path(doc.file_path).name
-        file_url = f"/uploads/{filename}"
-
-    return DocumentDetail(
-        id=doc.id,
-        site_id=doc.site_id,
-        site_name=site_name,
-        title=doc.title,
-        file_type=doc.file_type,
-        original_filename=doc.original_filename,
-        file_size=getattr(doc, "file_size", None),
-        file_url=file_url,
-        extracted_text=doc.extracted_text,
-        corrected_text=doc.corrected_text,
-        created_at=doc.created_at,
-    )
+    return _document_detail(doc, doc.site.name if doc.site else None)
 
 
 @router.delete("/{id}")
-def delete_document(
-    id: int,
-    db: Session = Depends(get_db),
-):
-    """
-    Delete an archival document record and safely clean up its stored file on disk.
-    """
+def delete_document(id: int, db: Session = Depends(get_db),
+                    _curator: CuratorIdentity = Depends(require_curator)):
     doc = db.query(ArchivalDocument).filter(ArchivalDocument.id == id).first()
     if not doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Archival document #{id} not found.",
-        )
-
-    # Clean up file on disk if exists
-    if doc.file_path and os.path.exists(doc.file_path):
-        try:
-            os.remove(doc.file_path)
-            logger.info(f"Safely removed physical document file: {doc.file_path}")
-        except Exception as e:
-            logger.warning(f"Could not remove physical file {doc.file_path}: {e}")
-
+        raise HTTPException(status_code=404, detail=f"Archival document #{id} not found.")
+    try:
+        if doc.storage_key:
+            get_document_storage(doc.storage_provider).delete(doc.storage_key)
+        elif doc.file_path and Path(doc.file_path).is_file():
+            Path(doc.file_path).unlink()
+    except (OSError, StorageConfigurationError, StorageOperationError) as exc:
+        logger.error("Refusing metadata deletion after object cleanup failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Stored file cleanup failed; the database record was preserved.") from exc
+    add_audit_event(db, action="document.delete", resource_type="archival_document", resource_id=doc.id)
     db.delete(doc)
     db.commit()
-
-    return {
-        "message": f"Archival document #{id} deleted successfully.",
-        "id": id,
-    }
+    return {"message": f"Archival document #{id} deleted successfully.", "id": id}

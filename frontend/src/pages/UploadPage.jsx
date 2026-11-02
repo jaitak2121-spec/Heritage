@@ -13,10 +13,12 @@ import {
   RefreshCw,
   Building,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { getApiErrorMessage, heritageApi } from '../services/api';
+import { Link, useLocation } from 'react-router-dom';
+import { getApiErrorMessage, heritageApi, isCuratorAuthenticated } from '../services/api';
 
 const UploadPage = () => {
+  const location = useLocation();
+  const [curatorActive, setCuratorActive] = useState(isCuratorAuthenticated);
   const [step, setStep] = useState(1); // 1: upload, 2: review, 3: confirm
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -76,6 +78,16 @@ const UploadPage = () => {
     loadInitialData();
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncAuth = () => setCuratorActive(isCuratorAuthenticated());
+    window.addEventListener('curator:auth-changed', syncAuth);
+    window.addEventListener('curator:unauthorized', syncAuth);
+    return () => {
+      window.removeEventListener('curator:auth-changed', syncAuth);
+      window.removeEventListener('curator:unauthorized', syncAuth);
     };
   }, []);
 
@@ -157,13 +169,29 @@ const UploadPage = () => {
 
     try {
       setUploadProgress(50);
-      const res = await heritageApi.uploadDocument(formData);
+      let res = await heritageApi.uploadDocument(formData);
+      if (['uploaded', 'processing'].includes(res.processing_status)) {
+        setStatusMessage(res.message || 'Original stored securely. Text extraction is running in the archive queue.');
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          res = await heritageApi.getDocumentById(res.id);
+          setUploadedDoc(res);
+          setUploadProgress(Math.min(95, 55 + attempt));
+          if (res.processing_status === 'extracted') break;
+          if (res.processing_status === 'failed') {
+            throw new Error(res.processing_error || 'Document extraction failed after the original was stored.');
+          }
+        }
+        if (res.processing_status !== 'extracted') {
+          throw new Error('The original is safely stored, but processing is taking longer than expected. Check Recent Archival Digitisations shortly.');
+        }
+      }
       setUploadProgress(100);
 
       setUploadedDoc(res);
       setExtractedText(res.extracted_text || '');
-      setExtractionMethod(res.method || 'extraction');
-      setStatusMessage(res.message || 'Text successfully extracted.');
+      setExtractionMethod(res.method || res.ocr_method || 'extraction');
+      setStatusMessage(res.message || 'Text successfully extracted and is ready for curator review.');
       setMetadata((prev) => ({
         ...prev,
         title: res.title,
@@ -195,6 +223,7 @@ const UploadPage = () => {
         title: metadata.title.trim() || uploadedDoc.title,
         corrected_text: extractedText,
         site_id: metadata.siteId ? parseInt(metadata.siteId, 10) : null,
+        review_status: 'approved',
       };
 
       const res = await heritageApi.updateDocument(uploadedDoc.id, updatePayload);
@@ -228,6 +257,25 @@ const UploadPage = () => {
       setErrorMessage(getApiErrorMessage(err, 'Could not delete the document.'));
     }
   };
+
+  if (!curatorActive) {
+    return (
+      <div className="min-h-[70vh] bg-parchment px-4 py-20 text-center">
+        <div className="mx-auto max-w-xl rounded-3xl border border-gold/25 bg-white p-10 shadow-soft">
+          <h1 className="mb-3 font-serif text-3xl font-bold text-charcoal">Curator access required</h1>
+          <p className="mb-7 text-sm leading-relaxed text-charcoal/65">
+            Document originals and archive metadata are protected from anonymous changes. Sign in to digitize or review a record.
+          </p>
+          <Link
+            to="/curator/login" state={{ from: location.pathname }}
+            className="inline-flex rounded-xl bg-maroon px-6 py-3 text-sm font-semibold text-white hover:bg-maroon-dark"
+          >
+            Sign in as curator
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-parchment text-charcoal font-sans py-8">
@@ -746,6 +794,10 @@ const UploadPage = () => {
                         <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-semibold">
                           {doc.extracted_length > 0
                             ? `${doc.extracted_length} chars`
+                            : doc.processing_status === 'failed'
+                            ? 'Processing failed'
+                            : ['uploaded', 'processing'].includes(doc.processing_status)
+                            ? 'Processing…'
                             : doc.has_corrected_text
                             ? 'Verified'
                             : 'Cataloged'}

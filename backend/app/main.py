@@ -1,13 +1,16 @@
-import os
 import logging
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.database import engine, Base, SessionLocal
-from app.routers import sites, map, documents, assistant
+from app.database import SessionLocal, get_db
+from app.routers import assistant, audit, auth, documents, map, search, sites
 from app.services.seed import seed_database
+from app.services.storage import get_document_storage
+from app.services.document_processing import processing_mode, recover_pending_documents, shutdown_processing_executor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("heritagelens")
@@ -15,25 +18,7 @@ logger = logging.getLogger("heritagelens")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Initialize tables safely (Base.metadata.create_all preserves existing tables and records)
-    logger.info("Initializing database tables...")
-    Base.metadata.create_all(bind=engine)
-    try:
-        from sqlalchemy import inspect, text
-        inspector = inspect(engine)
-        if "archival_documents" in inspector.get_table_names():
-            existing_columns = {col["name"] for col in inspector.get_columns("archival_documents")}
-            with engine.begin() as conn:
-                if "file_path" not in existing_columns:
-                    conn.execute(text("ALTER TABLE archival_documents ADD COLUMN file_path VARCHAR(500);"))
-                    logger.info("Migrated archival_documents: added file_path column.")
-                if "file_size" not in existing_columns:
-                    conn.execute(text("ALTER TABLE archival_documents ADD COLUMN file_size INTEGER;"))
-                    logger.info("Migrated archival_documents: added file_size column.")
-    except Exception as e:
-        logger.debug(f"Schema inspection note: {e}")
-
-    # 2. Automatically seed database if empty
+    # Schema creation and upgrades are deliberately handled by Alembic, never at web startup.
     db = SessionLocal()
     try:
         seed_database(db)
@@ -42,7 +27,15 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    try:
+        recovered = recover_pending_documents()
+        if recovered:
+            logger.info("Recovered %s pending document processing job(s).", recovered)
+    except Exception as exc:
+        logger.error("Could not recover pending document jobs: %s", type(exc).__name__)
+
     yield
+    shutdown_processing_executor()
     logger.info("Shutting down HeritageLens API.")
 
 
@@ -79,16 +72,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files for document uploads
-uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
-
 # Include Routers
 app.include_router(sites.router)
 app.include_router(map.router)
 app.include_router(documents.router)
 app.include_router(assistant.router)
+app.include_router(auth.router)
+app.include_router(search.router)
+app.include_router(audit.router)
 
 
 @app.get("/api/health", tags=["Health"])
@@ -97,6 +88,26 @@ def health_check():
         "status": "healthy",
         "service": "HeritageLens Archive API",
         "version": "1.0.0"
+    }
+
+
+@app.get("/api/ready", tags=["Health"])
+def readiness_check(db: Session = Depends(get_db)):
+    """Verify required dependencies without mutating data or contacting optional AI providers."""
+    try:
+        db.execute(text("SELECT 1"))
+        storage = get_document_storage()
+    except Exception as exc:
+        logger.warning("Readiness check failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="A required backend dependency is unavailable or misconfigured.",
+        ) from exc
+    return {
+        "status": "ready",
+        "database": "available",
+        "storage": storage.provider_name,
+        "document_processing": processing_mode(),
     }
 
 

@@ -8,6 +8,8 @@ const SiteDetailPage = lazy(() => import('./pages/SiteDetailPage'));
 const UploadPage = lazy(() => import('./pages/UploadPage'));
 const MapPage = lazy(() => import('./pages/MapPage'));
 const AssistantPage = lazy(() => import('./pages/AssistantPage'));
+const CuratorLoginPage = lazy(() => import('./pages/CuratorLoginPage'));
+const DocumentDetailPage = lazy(() => import('./pages/DocumentDetailPage'));
 
 const RouteLoader = () => (
   <div className="min-h-[65vh] bg-parchment px-4 py-16" role="status" aria-label="Loading page">
@@ -37,6 +39,8 @@ function App() {
           <Route path="/digitize" element={<UploadPage />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/curator/login" element={<CuratorLoginPage />} />
+          <Route path="/documents/:id" element={<DocumentDetailPage />} />
         </Route>
       </Routes>
     </Suspense>

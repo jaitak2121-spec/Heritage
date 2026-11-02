@@ -1,16 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
-import { MapPin, Upload, Archive, MessageSquare, Home } from 'lucide-react';
+import { MapPin, Upload, Archive, MessageSquare, Home, LogIn, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { heritageApi } from '../../services/api';
+import { heritageApi, isCuratorAuthenticated, logoutCurator } from '../../services/api';
 
 const Layout = () => {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
+  const [curatorActive, setCuratorActive] = useState(isCuratorAuthenticated);
 
   useEffect(() => {
     // Begin waking Render as soon as the application shell loads.
     heritageApi.checkHealth().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const syncAuth = () => setCuratorActive(isCuratorAuthenticated());
+    window.addEventListener('curator:auth-changed', syncAuth);
+    window.addEventListener('curator:unauthorized', syncAuth);
+    return () => {
+      window.removeEventListener('curator:auth-changed', syncAuth);
+      window.removeEventListener('curator:unauthorized', syncAuth);
+    };
   }, []);
 
   const navLinks = [
@@ -68,6 +79,22 @@ const Layout = () => {
                 <span>{link.label}</span>
               </NavLink>
             ))}
+            {curatorActive ? (
+              <button
+                type="button"
+                onClick={() => logoutCurator()}
+                className="flex items-center gap-2 rounded-xl border border-maroon/20 px-3 py-2 text-xs font-semibold text-maroon hover:bg-maroon/5"
+              >
+                <LogOut size={15} /> Logout
+              </button>
+            ) : (
+              <Link
+                to="/curator/login"
+                className="flex items-center gap-2 rounded-xl border border-maroon/20 px-3 py-2 text-xs font-semibold text-maroon hover:bg-maroon/5"
+              >
+                <LogIn size={15} /> Curator
+              </Link>
+            )}
           </nav>
         </div>
         <motion.div

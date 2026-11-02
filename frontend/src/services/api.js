@@ -10,6 +10,14 @@ const configuredApiUrl = import.meta.env.VITE_API_BASE_URL
   || 'http://localhost:8000';
 
 export const API_BASE_URL = normalizeApiBaseUrl(configuredApiUrl);
+const CURATOR_TOKEN_KEY = 'heritagelens.curator.session';
+
+export const isCuratorAuthenticated = () => Boolean(window.sessionStorage.getItem(CURATOR_TOKEN_KEY));
+
+export const logoutCurator = () => {
+  window.sessionStorage.removeItem(CURATOR_TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent('curator:auth-changed'));
+};
 
 const requireArray = (data, resourceName) => {
   if (!Array.isArray(data)) {
@@ -75,7 +83,31 @@ const apiClient = axios.create({
   timeout: 25000,
 });
 
+apiClient.interceptors.request.use((config) => {
+  const token = window.sessionStorage.getItem(CURATOR_TOKEN_KEY);
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && window.sessionStorage.getItem(CURATOR_TOKEN_KEY)) {
+      logoutCurator();
+      window.dispatchEvent(new CustomEvent('curator:unauthorized'));
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const heritageApi = {
+  loginCurator: async (password) => {
+    const response = await apiClient.post('/auth/login', { password });
+    window.sessionStorage.setItem(CURATOR_TOKEN_KEY, response.data.access_token);
+    window.dispatchEvent(new CustomEvent('curator:auth-changed'));
+    return response.data;
+  },
+
   // Heritage Sites
   getSites: async (params = {}) => {
     const response = await getWithColdStartRetry('/sites', { params });
@@ -136,6 +168,16 @@ export const heritageApi = {
 
   deleteDocument: async (id) => {
     const response = await apiClient.delete(`/documents/${id}`);
+    return response.data;
+  },
+
+  getDocumentDownloadUrl: (id) => `${API_BASE_URL}/documents/${id}/download`,
+
+  searchArchive: async (params) => {
+    const response = await getWithColdStartRetry('/search', { params });
+    if (!Array.isArray(response.data?.sites) || !Array.isArray(response.data?.documents)) {
+      throw new Error('The API returned an invalid archive search response.');
+    }
     return response.data;
   },
 

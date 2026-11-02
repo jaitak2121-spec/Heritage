@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -11,6 +9,14 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./heritagelens.db
       - UPLOAD_DIR=uploads
+      - STORAGE_PROVIDER=local
+      - MAX_FILE_SIZE_MB=25
+      - DOCUMENT_PROCESSING_MODE=${DOCUMENT_PROCESSING_MODE:-inline}
+      - DOCUMENT_PROCESSING_WORKERS=${DOCUMENT_PROCESSING_WORKERS:-1}
+      - CURATOR_PASSWORD=${CURATOR_PASSWORD:-}
+      - CURATOR_TOKEN_SECRET=${CURATOR_TOKEN_SECRET:-}
+      - CURATOR_LOGIN_MAX_ATTEMPTS=${CURATOR_LOGIN_MAX_ATTEMPTS:-5}
+      - CURATOR_LOGIN_WINDOW_SECONDS=${CURATOR_LOGIN_WINDOW_SECONDS:-300}
       - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
       - OMNIROUTER_API_KEY=${OMNIROUTER_API_KEY:-}
       - OMNIROUTER_BASE_URL=${OMNIROUTER_BASE_URL:-https://openrouter.ai/api/v1}

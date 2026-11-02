@@ -301,23 +301,28 @@ const SiteDetailPage = () => {
                       className="p-3.5 bg-parchment/40 rounded-xl border border-parchment-dark/30 hover:border-maroon/40 transition-colors"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-medium text-xs text-charcoal">{doc.title}</div>
-                        <button
-                          type="button"
-                          title="Download document record"
-                          className="text-maroon hover:bg-white p-1.5 rounded-lg transition-colors"
-                        >
-                          <Download size={15} />
-                        </button>
+                        <Link to={`/documents/${doc.id}`} className="font-medium text-xs text-charcoal hover:text-maroon hover:underline">{doc.title}</Link>
+                        {doc.file_url && (
+                          <a
+                            href={heritageApi.getDocumentDownloadUrl(doc.id)}
+                            title="Download original document"
+                            className="text-maroon hover:bg-white p-1.5 rounded-lg transition-colors"
+                          >
+                            <Download size={15} />
+                          </a>
+                        )}
                       </div>
                       <div className="text-[11px] text-charcoal/60 mt-1">
                         Format: {doc.file_type} {doc.original_filename && `· ${doc.original_filename}`}
                       </div>
-                      {doc.extracted_text && (
+                      {(doc.corrected_text || doc.extracted_text) && (
                         <p className="text-[11px] text-charcoal/70 mt-2 line-clamp-2 bg-white/60 p-2 rounded border border-parchment-dark/20 font-mono">
-                          {doc.extracted_text}
+                          {doc.corrected_text || doc.extracted_text}
                         </p>
                       )}
+                      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-maroon/65">
+                        {doc.review_status?.replace('_', ' ') || doc.processing_status?.replace('_', ' ') || 'archived'}
+                      </div>
                     </div>
                   ))}
                 </div>
