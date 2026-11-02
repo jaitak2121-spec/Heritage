@@ -9,6 +9,7 @@ import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { getApiErrorMessage, heritageApi } from '../services/api';
 import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
+import { HERITAGE_SITE_FALLBACKS } from '../data/siteCatalog';
 
 // Fix leaflet icon paths cleanly in Vite ESM
 delete L.Icon.Default.prototype._getIconUrl;
@@ -40,33 +41,11 @@ const MapController = ({ target }) => {
   return null;
 };
 
-const INITIAL_FALLBACK_SITES = [
-  {
-    id: 1,
-    name: 'Taj Mahal',
-    description: 'White marble mausoleum built by Emperor Shah Jahan in memory of Mumtaz Mahal.',
-    historical_period: 'Mughal Era · 1632–1653',
-    architectural_style: 'Indo-Islamic',
-    latitude: 27.1751,
-    longitude: 78.0421,
-    image_url: '/images/sites/taj-mahal.jpg',
-  },
-  {
-    id: 6,
-    name: 'Konark Sun Temple',
-    description: 'Monumental 13th-century chariot of the Sun God Surya, famous for 24 carved stone wheels.',
-    historical_period: 'Medieval · 13th Century',
-    architectural_style: 'Kalinga Architecture',
-    latitude: 19.8876,
-    longitude: 86.0945,
-    image_url: '/images/sites/konark-sun-temple.jpg',
-  },
-];
-
 const MapPage = () => {
   const [searchParams] = useSearchParams();
-  const [sites, setSites] = useState(INITIAL_FALLBACK_SITES);
-  const [loading, setLoading] = useState(true);
+  const [sites, setSites] = useState(HERITAGE_SITE_FALLBACKS);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(true);
   const [error, setError] = useState(null);
 
   const siteIdParam = searchParams.get('site');
@@ -95,12 +74,14 @@ const MapPage = () => {
           setSites(markers);
           setError(null);
           setLoading(false);
+          setSyncing(false);
         }
       } catch (err) {
         if (isMounted) {
           console.warn('Backend map markers unavailable, using fallback:', err);
           setError(getApiErrorMessage(err, 'Live map locations are unavailable. Showing fallback locations.'));
           setLoading(false);
+          setSyncing(false);
         }
       }
     };
@@ -192,7 +173,7 @@ const MapPage = () => {
               <div className="font-medium">
                 {loading
                   ? 'Loading markers...'
-                  : `Showing ${sites.length} ${error ? 'fallback' : 'live database'} locations`}
+                  : `Showing ${sites.length} ${error ? 'local archive' : 'heritage'} locations${syncing ? ' · syncing live data…' : ''}`}
               </div>
             </div>
           </div>

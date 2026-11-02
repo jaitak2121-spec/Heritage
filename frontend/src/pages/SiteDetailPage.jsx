@@ -2,30 +2,53 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapPin, Calendar, Building, BookOpen, Image as ImageIcon, Download, Sparkles, ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiErrorMessage, heritageApi } from '../services/api';
-import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
+import { getSiteGallery, getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
+import { HERITAGE_SITE_FALLBACKS } from '../data/siteCatalog';
 
 const SiteDetailPage = () => {
   const { id } = useParams();
-  const [site, setSite] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const numericId = Number(id);
+  const localSite = HERITAGE_SITE_FALLBACKS.find((record) => record.id === numericId) || null;
+  const [remoteSite, setRemoteSite] = useState(null);
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [activeVisual, setActiveVisual] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const site = remoteSite?.id === numericId ? remoteSite : localSite;
+  const error = loadError?.siteId === numericId ? loadError.message : null;
+  const syncNotice = remoteSite?.id === numericId
+    ? null
+    : syncStatus?.siteId === numericId
+      ? syncStatus.message
+      : localSite
+        ? 'Synchronizing the full live record…'
+        : null;
+  const loading = !site && !error;
 
   useEffect(() => {
     let isMounted = true;
+
     const fetchSiteDetail = async () => {
-      setLoading(true);
-      setError(null);
       try {
         const data = await heritageApi.getSiteById(id);
         if (isMounted) {
-          setSite(data);
-          setLoading(false);
+          setRemoteSite(data);
+          setLoadError(null);
+          setSyncStatus(null);
         }
       } catch (err) {
         if (isMounted) {
           console.error(`Failed to fetch heritage site #${id}:`, err);
-          setError(getApiErrorMessage(err, `Unable to load heritage record #${id}.`));
-          setLoading(false);
+          if (localSite) {
+            setSyncStatus({
+              siteId: numericId,
+              message: 'Live details are delayed; the locally preserved record and gallery remain available.',
+            });
+          } else {
+            setLoadError({
+              siteId: numericId,
+              message: getApiErrorMessage(err, `Unable to load heritage record #${id}.`),
+            });
+          }
         }
       }
     };
@@ -36,7 +59,7 @@ const SiteDetailPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, localSite, numericId]);
 
   if (loading) {
     return (
@@ -87,6 +110,11 @@ const SiteDetailPage = () => {
     );
   }
 
+  const primaryVisual = getSiteVisual(site);
+  const currentActiveVisual = activeVisual?.siteId === numericId ? activeVisual.visual : null;
+  const selectedVisual = currentActiveVisual || primaryVisual;
+  const galleryVisuals = getSiteGallery(site);
+
   return (
     <div className="min-h-screen bg-parchment text-charcoal font-sans py-8">
       <div className="container mx-auto px-4 max-w-6xl">
@@ -104,16 +132,24 @@ const SiteDetailPage = () => {
           <span className="text-maroon font-semibold">{site.name}</span>
         </div>
 
+        {syncNotice && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-gold/30 bg-white/75 px-5 py-3 text-xs text-charcoal/70 shadow-soft">
+            <RefreshCw size={15} className={syncNotice.startsWith('Synchronizing') ? 'animate-spin text-maroon' : 'text-gold-dark'} />
+            <span>{syncNotice}</span>
+          </div>
+        )}
+
         {/* Main Content Layout */}
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left Column: Visuals & Narrative */}
           <div className="lg:col-span-2 space-y-8">
             <div className="group relative bg-white rounded-[1.75rem] overflow-hidden shadow-lift border border-gold/20">
               <img
-                src={getSiteVisual(site).src}
-                alt={site.name}
+                key={selectedVisual.src}
+                src={selectedVisual.src}
+                alt={selectedVisual.caption || site.name}
                 className="w-full h-[28rem] object-cover transition-transform duration-[1600ms] group-hover:scale-[1.025]"
-                style={{ objectPosition: getSiteVisual(site).position }}
+                style={{ objectPosition: selectedVisual.position || 'center' }}
                 onError={(e) => {
                   e.currentTarget.onerror = null;
                   e.currentTarget.src = SITE_IMAGE_FALLBACK;
@@ -127,32 +163,38 @@ const SiteDetailPage = () => {
                 </div>
                 <span className="hidden sm:block text-xs text-white/75">{site.location_name}</span>
               </div>
+              {currentActiveVisual?.caption && (
+                <div className="absolute right-6 top-6 max-w-xs rounded-full bg-charcoal/70 px-4 py-2 text-[10px] text-white backdrop-blur-md">
+                  {currentActiveVisual.caption}
+                </div>
+              )}
             </div>
 
             {/* Thumbnail Gallery */}
-            {site.images && site.images.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {site.images.map((img, index) => (
-                  <div
-                    key={img.id}
-                    className="rounded-xl overflow-hidden border border-parchment-dark/30 shadow-xs cursor-pointer hover:border-maroon transition-all group"
+            {galleryVisuals.length > 0 && (
+              <div className="grid grid-cols-3 gap-4">
+                {[{ ...primaryVisual, caption: `Primary archive view of ${site.name}` }, ...galleryVisuals].map((visual) => (
+                  <button
+                    type="button"
+                    key={visual.src}
+                    onClick={() => setActiveVisual(visual.src === primaryVisual.src ? null : { siteId: numericId, visual })}
+                    className={`rounded-xl overflow-hidden border text-left shadow-xs cursor-pointer transition-all group ${selectedVisual.src === visual.src ? 'border-maroon ring-2 ring-maroon/15' : 'border-parchment-dark/30 hover:border-maroon'}`}
                   >
                     <img
-                      src={index === 0 ? getSiteVisual(site).src : img.image_url}
-                      alt={img.caption || `${site.name} plate`}
+                      src={visual.src}
+                      alt={visual.caption}
+                      loading="lazy"
                       className="w-full h-28 object-cover group-hover:scale-105 transition-transform duration-300"
-                      style={{ objectPosition: index === 0 ? getSiteVisual(site).position : 'center' }}
+                      style={{ objectPosition: visual.position || 'center' }}
                       onError={(e) => {
                         e.currentTarget.onerror = null;
-                        e.currentTarget.src = getSiteVisual(site).src || SITE_IMAGE_FALLBACK;
+                        e.currentTarget.src = primaryVisual.src || SITE_IMAGE_FALLBACK;
                       }}
                     />
-                    {img.caption && (
-                      <div className="p-1.5 text-[10px] text-charcoal/70 bg-white truncate">
-                        {img.caption}
-                      </div>
-                    )}
-                  </div>
+                    <div className="p-2 text-[10px] text-charcoal/70 bg-white line-clamp-2 min-h-10">
+                      {visual.caption}
+                    </div>
+                  </button>
                 ))}
               </div>
             )}

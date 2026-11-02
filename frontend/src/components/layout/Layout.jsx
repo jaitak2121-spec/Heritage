@@ -1,10 +1,17 @@
+import { useEffect } from 'react';
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom';
 import { MapPin, Upload, Archive, MessageSquare, Home } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { heritageApi } from '../../services/api';
 
 const Layout = () => {
   const location = useLocation();
   const isHomePage = location.pathname === '/';
+
+  useEffect(() => {
+    // Begin waking Render as soon as the application shell loads.
+    heritageApi.checkHealth().catch(() => undefined);
+  }, []);
 
   const navLinks = [
     { to: '/', label: 'Home', icon: <Home size={18} /> },
@@ -171,6 +178,14 @@ const Layout = () => {
                 <p className="text-[11px] text-parchment/50 pt-2 border-t border-charcoal-light/30">
                   © 2026 HeritageLens. Research & educational prototype. Data is curated for demonstration purposes.
                 </p>
+                <a
+                  href="/images/sites/ATTRIBUTION.md"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block text-[11px] text-gold-light/80 hover:text-gold-light transition-colors"
+                >
+                  Photography credits & licenses
+                </a>
               </div>
             </div>
           </div>

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Search, MapPin, Calendar, Filter, ChevronRight, Image as ImageIcon, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { getApiErrorMessage, heritageApi } from '../services/api';
-import { getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
+import { heritageApi } from '../services/api';
+import { getSiteGallery, getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
+import { HERITAGE_SITE_FALLBACKS } from '../data/siteCatalog';
 
 const ARCHIVE_CACHE_KEY = 'heritagelens.archive.v1';
 
@@ -38,12 +39,27 @@ const ArchivePage = () => {
   const [selectedStyle, setSelectedStyle] = useState('all');
   const [selectedRegion, setSelectedRegion] = useState('all');
 
-  const [sites, setSites] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [catalogSites, setCatalogSites] = useState(() => readCachedSites()?.sites || HERITAGE_SITE_FALLBACKS);
+  const [refreshing, setRefreshing] = useState(true);
   const [notice, setNotice] = useState(null);
   const [slowLoading, setSlowLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+
+  const activeFilters = useMemo(() => {
+    const filters = {};
+    if (debouncedSearchTerm.trim()) filters.q = debouncedSearchTerm.trim();
+    if (selectedPeriod !== 'all') filters.period = selectedPeriod;
+    if (selectedStyle !== 'all') filters.style = selectedStyle;
+    if (selectedRegion !== 'all') filters.region = selectedRegion;
+    return filters;
+  }, [debouncedSearchTerm, selectedPeriod, selectedStyle, selectedRegion]);
+
+  const sites = useMemo(
+    () => filterCachedSites(catalogSites, activeFilters),
+    [catalogSites, activeFilters],
+  );
+
+  const loading = catalogSites.length === 0;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
@@ -58,49 +74,24 @@ const ArchivePage = () => {
     }, 3000);
 
     const fetchSites = async () => {
-      setLoading(true);
-      setError(null);
-      setNotice(null);
-      setSlowLoading(false);
       try {
-        const params = {};
-        if (debouncedSearchTerm.trim()) params.q = debouncedSearchTerm.trim();
-        if (selectedPeriod !== 'all') params.period = selectedPeriod;
-        if (selectedStyle !== 'all') params.style = selectedStyle;
-        if (selectedRegion !== 'all') params.region = selectedRegion;
-
-        const data = await heritageApi.getSites(params);
+        const data = await heritageApi.getSites();
         if (isMounted) {
           window.clearTimeout(slowTimer);
-          setSites(data);
-          if (Object.keys(params).length === 0) {
-            window.localStorage.setItem(ARCHIVE_CACHE_KEY, JSON.stringify({
-              sites: data,
-              savedAt: new Date().toISOString(),
-            }));
-          }
-          setLoading(false);
+          setCatalogSites(data);
+          window.localStorage.setItem(ARCHIVE_CACHE_KEY, JSON.stringify({
+            sites: data,
+            savedAt: new Date().toISOString(),
+          }));
+          setRefreshing(false);
           setSlowLoading(false);
         }
       } catch (err) {
         if (isMounted) {
           window.clearTimeout(slowTimer);
           console.error('Failed to fetch heritage sites from backend:', err);
-          const cached = readCachedSites();
-          const params = {};
-          if (debouncedSearchTerm.trim()) params.q = debouncedSearchTerm.trim();
-          if (selectedPeriod !== 'all') params.period = selectedPeriod;
-          if (selectedStyle !== 'all') params.style = selectedStyle;
-          if (selectedRegion !== 'all') params.region = selectedRegion;
-
-          if (cached?.sites.length) {
-            setSites(filterCachedSites(cached.sites, params));
-            setNotice('The live archive is waking up. Showing the most recently saved records while we reconnect.');
-          } else {
-            setSites([]);
-            setError(getApiErrorMessage(err, 'Unable to load heritage records.'));
-          }
-          setLoading(false);
+          setNotice('Live synchronization is delayed. The complete local archive remains available while the service reconnects.');
+          setRefreshing(false);
           setSlowLoading(false);
         }
       }
@@ -111,7 +102,7 @@ const ArchivePage = () => {
       isMounted = false;
       window.clearTimeout(slowTimer);
     };
-  }, [debouncedSearchTerm, selectedPeriod, selectedStyle, selectedRegion, retryCount]);
+  }, [retryCount]);
 
   const periods = ['all', 'Ancient', 'Medieval', 'Mughal Era'];
   const styles = ['all', 'Indo-Islamic', 'Dravidian', 'Rock-Cut', 'Nagara', 'Kalinga'];
@@ -122,6 +113,13 @@ const ArchivePage = () => {
     setSelectedPeriod('all');
     setSelectedStyle('all');
     setSelectedRegion('all');
+  };
+
+  const retryConnection = () => {
+    setRefreshing(true);
+    setSlowLoading(false);
+    setNotice(null);
+    setRetryCount((count) => count + 1);
   };
 
   return (
@@ -217,11 +215,11 @@ const ArchivePage = () => {
 
           <div className="mt-4 pt-4 border-t border-parchment-dark/20 flex items-center justify-between text-xs text-charcoal/60">
             <div>
-              {loading && <span>Connecting to the live archive…</span>}
-              {!loading && error && <span>Live archive temporarily unavailable</span>}
-              {!loading && !error && (
+              {loading && <span>Preparing archive records…</span>}
+              {!loading && (
                 <span>
-                  Showing <strong className="text-maroon font-semibold">{sites.length}</strong> {notice ? 'saved archive' : 'live database'} records
+                  Showing <strong className="text-maroon font-semibold">{sites.length}</strong> {notice ? 'local archive' : 'heritage archive'} records
+                  {refreshing && <span className="ml-2 text-gold-dark">· Syncing live data…</span>}
                 </span>
               )}
             </div>
@@ -236,15 +234,16 @@ const ArchivePage = () => {
           </div>
         </div>
 
-        {/* Loading State */}
-        {loading && (
+        {refreshing && slowLoading && (
+          <div className="mb-6 flex items-center justify-center gap-3 rounded-2xl border border-gold/30 bg-white/70 px-5 py-3 text-sm text-charcoal/70 shadow-soft">
+            <RefreshCw size={16} className="animate-spin text-maroon" />
+            <span>Live data is syncing in the background. You can continue exploring the local archive.</span>
+          </div>
+        )}
+
+        {/* Loading State — only needed if both cache and bundled catalog are unavailable. */}
+        {loading && sites.length === 0 && (
           <div>
-            {slowLoading && (
-              <div className="mb-6 flex items-center justify-center gap-3 rounded-2xl border border-gold/30 bg-white/70 px-5 py-3 text-sm text-charcoal/70 shadow-soft">
-                <RefreshCw size={16} className="animate-spin text-maroon" />
-                <span>Waking the digital archive — the first visit can take up to a minute.</span>
-              </div>
-            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div key={i} className="bg-white rounded-2xl overflow-hidden border border-parchment-dark/30 p-4 space-y-3">
@@ -265,7 +264,7 @@ const ArchivePage = () => {
               <span>{notice}</span>
             </div>
             <button
-              onClick={() => setRetryCount((count) => count + 1)}
+              onClick={retryConnection}
               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-maroon px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-maroon-dark"
             >
               <RefreshCw size={14} />
@@ -274,24 +273,8 @@ const ArchivePage = () => {
           </div>
         )}
 
-        {/* Error State */}
-        {!loading && error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center text-red-800 max-w-lg mx-auto">
-            <AlertCircle className="mx-auto mb-3 text-red-600" size={36} />
-            <h3 className="font-serif font-bold text-lg mb-2">Database Connection Notice</h3>
-            <p className="text-xs text-red-700 mb-5 leading-relaxed">{error}</p>
-            <button
-              onClick={() => setRetryCount((count) => count + 1)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-maroon text-white rounded-xl text-xs font-semibold hover:bg-maroon-dark transition-colors shadow-xs"
-            >
-              <RefreshCw size={14} />
-              <span>Retry Connection</span>
-            </button>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!loading && !error && sites.length === 0 && (
+        {!loading && !refreshing && sites.length === 0 && (
           <div className="text-center py-16 bg-white rounded-2xl border border-parchment-dark/30 shadow-soft">
             <div className="text-5xl mb-4">🏛️</div>
             <h3 className="text-2xl font-serif font-bold text-charcoal mb-2">No Matching Records Found</h3>
@@ -308,7 +291,7 @@ const ArchivePage = () => {
         )}
 
         {/* Results Grid */}
-        {!loading && !error && sites.length > 0 && (
+        {!loading && sites.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {sites.map((site, index) => (
               <motion.div
@@ -370,7 +353,7 @@ const ArchivePage = () => {
                       </span>
                       <span className="flex items-center gap-1" title="Gallery Plates">
                         <ImageIcon size={13} />
-                        {site.image_count || 0}
+                        {Math.max(site.image_count || 0, getSiteGallery(site).length + 1)}
                       </span>
                     </div>
                     <Link
