@@ -11,7 +11,7 @@ from app.database import engine
 
 logger = logging.getLogger("heritagelens.migrations")
 BASELINE_REVISION = "0001_initial_schema"
-BASELINE_TABLES = {"heritage_sites", "archival_documents", "gallery_images"}
+BASELINE_TABLES = {"heritage_sites", "archival_documents", "site_images"}
 
 
 def migrate() -> None:
