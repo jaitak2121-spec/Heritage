@@ -70,6 +70,9 @@ test('background upload reaches review and can be approved and deleted', async (
   await page.getByRole('button', { name: 'Extract & Digitize Record' }).click();
   await expect(page.getByRole('heading', { name: 'Review Extracted Text & Metadata' })).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('textarea')).toHaveValue(/HERITAGELENS E2E BACKGROUND EXTRACTION/);
+  await expect(page.getByText('Page 1 of 1')).toBeVisible();
+  await page.locator('textarea').fill('Curator correction');
+  await expect(page.locator('pre')).toContainText('HERITAGELENS E2E BACKGROUND EXTRACTION');
   await page.getByRole('button', { name: 'Save to Heritage Archive' }).click();
   await expect(page.getByRole('heading', { name: 'Document Cataloged Successfully' })).toBeVisible();
 
@@ -78,4 +81,17 @@ test('background upload reaches review and can be approved and deleted', async (
   page.once('dialog', (dialog) => dialog.accept());
   await row.getByTitle('Delete document').click();
   await expect(row).toHaveCount(0);
+});
+
+test('timeline opens the Sanchi record and its interactive study', async ({ page }) => {
+  await page.goto('/archive');
+  await page.getByText('Historical timeline', { exact: true }).click();
+  await page.getByRole('button', { name: '1638 CE' }).click();
+  await expect(page.getByRole('link', { name: 'Open record', exact: true })).toHaveAttribute('href', '/archive/2');
+  await page.getByRole('button', { name: '3rd century BCE' }).click();
+  await page.getByRole('link', { name: 'Open record', exact: true }).click();
+  await page.getByRole('button', { name: 'Explore 3D study' }).click();
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Rotate view' }).click();
+  await page.getByRole('button', { name: 'Reset view' }).click();
 });

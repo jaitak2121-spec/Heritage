@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import ArchiveTimeline from '../components/ArchiveTimeline';
 import { motion } from 'framer-motion';
 import { Search, MapPin, Calendar, Filter, ChevronRight, Image as ImageIcon, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -209,6 +210,7 @@ const ArchivePage = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 max-w-6xl py-8">
         {/* Search and Filters */}
+        <ArchiveTimeline sites={catalogSites} />
         <div className="bg-white rounded-2xl p-6 border border-parchment-dark/30 shadow-soft mb-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Search */}

@@ -91,11 +91,12 @@ def process_document(document_id: int, db: Session | None = None) -> ProcessingO
 
         extraction_path, is_temporary = _materialize_document(doc)
         temporary_path = extraction_path if is_temporary else None
-        extraction = extract_document_text(extraction_path, doc.original_filename or extraction_path.name)
+        language = doc.extraction_language or "eng"
+        extraction = extract_document_text(extraction_path, doc.original_filename or extraction_path.name, language)
 
         doc.extracted_text = extraction.get("text", "")
         doc.ocr_method = extraction.get("method")
-        doc.extraction_language = "eng" if doc.ocr_method == "tesseract_ocr" else None
+        doc.extraction_language = language if doc.ocr_method == "tesseract_ocr" else None
         doc.page_count = extraction.get("page_count")
         doc.ocr_confidence = extraction.get("confidence")
         doc.processing_status = "extracted"

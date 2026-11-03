@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react';
+import { diffWordsWithSpace } from 'diff';
 import {
   Upload,
   FileText,
@@ -16,6 +17,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { getApiErrorMessage, heritageApi, isCuratorAuthenticated } from '../services/api';
 
+const PdfReview = lazy(() => import('../components/PdfReview'));
 const UploadPage = () => {
   const location = useLocation();
   const [curatorActive, setCuratorActive] = useState(isCuratorAuthenticated);
@@ -24,8 +26,16 @@ const UploadPage = () => {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [ocrLanguage, setOcrLanguage] = useState('eng');
+  const [previewUrl, setPreviewUrl] = useState('');
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
   const [extractedText, setExtractedText] = useState('');
   const [uploadedDoc, setUploadedDoc] = useState(null);
+  const originalText = uploadedDoc?.extracted_text || '';
+  const corrections = useMemo(() => originalText === extractedText ? [] :
+    diffWordsWithSpace(originalText, extractedText, { timeout: 30 }), [originalText, extractedText]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [extractionMethod, setExtractionMethod] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -160,6 +170,7 @@ const UploadPage = () => {
 
     const formData = new FormData();
     formData.append('file', fileToUpload);
+    formData.append('ocr_language', ocrLanguage);
     if (metadata.siteId) {
       formData.append('site_id', metadata.siteId);
     }
@@ -199,6 +210,7 @@ const UploadPage = () => {
       }));
 
       setUploading(false);
+      setPreviewUrl(URL.createObjectURL(fileToUpload));
       setStep(2);
       refreshRecentDocuments();
     } catch (err) {
@@ -414,6 +426,14 @@ const UploadPage = () => {
                     </div>
 
                     {/* Quick Metadata Input while uploading */}
+                    <label className="block text-sm font-semibold mb-4">
+                      Language on scanned pages
+                      <select className="block mt-2 p-2 border rounded-lg" value={ocrLanguage} onChange={e => setOcrLanguage(e.target.value)} disabled={uploading}>
+                        <option value="eng">English</option>
+                        <option value="hin+eng">Hindi (Devanagari) + English</option>
+                        <option value="guj+eng">Gujarati + English</option>
+                      </select>
+                    </label>
                     <div className="mt-4 pt-3 border-t border-parchment-dark/30 space-y-3">
                       <div>
                         <label className="block text-[11px] font-semibold text-charcoal mb-1">
@@ -546,7 +566,17 @@ const UploadPage = () => {
 
             <div className="grid lg:grid-cols-2 gap-8">
               {/* Text Area */}
+              <section className="min-w-0">
+                <h3 className="font-semibold mb-2">Original upload</h3>
+                {previewUrl && (/\.pdf$/i.test(selectedFile?.name)
+                  ? <Suspense fallback={<p>Opening PDF…</p>}><PdfReview file={selectedFile} /></Suspense>
+                  : <img alt="Uploaded archival scan" src={previewUrl} className="w-full h-80 object-contain bg-parchment/30" />)}
+                {previewUrl && <a href={previewUrl} download={selectedFile?.name} className="text-maroon underline">Download original for comparison</a>}
+              </section>
               <div>
+                <details open className="mb-3"><summary className="font-semibold">Raw extraction {uploadedDoc?.extraction_language && '(' + uploadedDoc.extraction_language + ')'}</summary>
+                  <pre className="max-h-36 overflow-auto whitespace-pre-wrap p-2 text-sm">{uploadedDoc?.extracted_text}</pre>
+                </details>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal/70 mb-2">
                   Extracted Archival Text (Editable)
                 </label>
@@ -557,6 +587,13 @@ const UploadPage = () => {
                   placeholder="Extracted text will appear here. You can manually edit or correct scanning anomalies."
                   className="w-full p-4 bg-parchment/30 rounded-xl border border-parchment-dark/30 text-xs font-mono leading-relaxed text-charcoal focus:outline-none focus:ring-2 focus:ring-maroon"
                 />
+                {originalText !== extractedText && <details open className="mt-2 text-sm">
+                  <summary>Curator corrections</summary>
+                  <p className="max-h-32 overflow-auto whitespace-pre-wrap">{corrections?.map((part, index) =>
+                    part.added ? <ins key={index} className="bg-green-100">{part.value}</ins> :
+                    part.removed ? <del key={index} className="bg-red-100">{part.value}</del> : part.value
+                  ) ?? 'Compare the raw extraction above with the edited text.'}</p>
+                </details>}
                 <div className="flex justify-between items-center mt-2 text-[11px] text-charcoal/50">
                   <span>{extractedText.length} characters extracted</span>
                   <button

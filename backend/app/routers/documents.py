@@ -65,8 +65,12 @@ async def upload_document(
     title: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     _curator: CuratorIdentity = Depends(require_curator),
+    ocr_language: str = Form("eng"),
 ):
     """Persist an original, then extract text while recording durable processing state."""
+    language = ocr_language if isinstance(ocr_language, str) else "eng"
+    if language not in {"eng", "hin+eng", "guj+eng"}:
+        raise HTTPException(status_code=422, detail="Unsupported OCR language.")
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file selected for upload.")
     suffix = Path(file.filename).suffix.lower()
@@ -107,6 +111,7 @@ async def upload_document(
         file_type="PDF" if suffix == ".pdf" else "Image", original_filename=file.filename,
         file_path=None, file_size=file_size, storage_provider=storage.provider_name,
         storage_key=object_key, processing_status="uploaded", review_status="unreviewed",
+        extraction_language=language,
     )
     try:
         db.add(new_doc)

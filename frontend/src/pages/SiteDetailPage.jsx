@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapPin, Calendar, Building, BookOpen, Image as ImageIcon, Download, Sparkles, ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiErrorMessage, heritageApi } from '../services/api';
 import { getSiteGallery, getSiteVisual, SITE_IMAGE_FALLBACK } from '../data/siteVisuals';
 import { HERITAGE_SITE_FALLBACKS } from '../data/siteCatalog';
 
+const SanchiStudy = lazy(() => import('../components/SanchiStudy'));
 const SiteDetailPage = () => {
+  const [studyOpen, setStudyOpen] = useState(false);
   const { id } = useParams();
   const numericId = Number(id);
   const localSite = HERITAGE_SITE_FALLBACKS.find((record) => record.id === numericId) || null;
@@ -200,6 +202,12 @@ const SiteDetailPage = () => {
             )}
 
             {/* Historical Description */}
+            {site.name === 'Great Stupa at Sanchi' && <section className="bg-white p-6 rounded-2xl shadow-soft">
+              <h2 className="text-2xl font-serif font-bold">Sanchi in three dimensions</h2>
+              <p className="my-2 text-sm">An illustrative architectural model of the dome, four gateways and tiered parasol. Proportions are approximate.</p>
+              <button aria-expanded={studyOpen} className="text-maroon font-semibold mb-3" onClick={() => setStudyOpen(!studyOpen)}>{studyOpen ? 'Close 3D study' : 'Explore 3D study'}</button>
+              {studyOpen && <Suspense fallback={<p>Loading model…</p>}><SanchiStudy /></Suspense>}
+            </section>}
             <section className="bg-white p-7 rounded-2xl border border-parchment-dark/30 shadow-soft">
               <h2 className="text-2xl font-serif font-bold text-charcoal mb-4 flex items-center gap-2">
                 <BookOpen className="text-maroon" size={22} />

@@ -8,7 +8,7 @@ const buildDir = path.join(workspaceDir, "presentation/.codex-presentation-build
 const outputDir = path.join(workspaceDir, "presentation/output");
 const skillDir = "/Users/jaitak/.codex/plugins/cache/openai-primary-runtime/presentations/26.1026.10807/skills/presentations";
 const runtimePython = "/Users/jaitak/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
-const finalPptx = path.join(outputDir, "HeritageLens-HackCult26-Light-Hackathon-Pitch.pptx");
+const finalPptx = path.join(outputDir, "HeritageLens-HackCult26-Complete-Feature-Pitch.pptx");
 
 const C = {
   paper: "#F7F1E5",
@@ -225,11 +225,55 @@ deck.theme.defaultFont = sans;
   s.speakerNotes.text = "Screenshot captured from https://heritage-pearl.vercel.app/. Features are verified in frontend routes, backend services and automated tests.";
 }
 
-// 4. End-to-end flow
+// 4. Feature showcase
 {
   const s = deck.slides.add();
   s.background.fill = C.paper;
-  header(s, 4, "From an uploaded source to verified discovery", "Automation handles repetitive processing. Curators retain editorial control.");
+  header(s, 4, "What judges can experience in the prototype", "The deployed product covers public discovery, archival digitization, curator control and source-grounded research.");
+
+  await image(s, A.archive, { left: 56, top: 210, width: 550, height: 225 }, { alt: "HeritageLens searchable archive", radius: 12 });
+  await image(s, A.map, { left: 630, top: 210, width: 590, height: 225 }, { alt: "HeritageLens interactive map", radius: 12, fit: "contain" });
+
+  const groups = [
+    ["DISCOVER", C.cyan, [
+      "Search site metadata plus extracted and curator-corrected document text",
+      "Filter the archive by period, architectural style and region",
+      "Open site records with galleries, metadata, linked documents and original downloads",
+      "Explore backend-provided coordinates through an interactive Leaflet map",
+    ]],
+    ["DIGITIZE AND GOVERN", C.orange, [
+      "Upload PDF and image sources with type and size validation",
+      "Extract selectable text with PyMuPDF or scan pages with Tesseract OCR",
+      "Track processing, review, approval and failure states, then correct transcriptions",
+      "Require curator authentication for uploads, edits and deletions",
+    ]],
+    ["RESEARCH AND RESILIENCE", C.maroon, [
+      "Ask a grounded assistant that returns archive sources and a local fallback answer",
+      "Keep originals in configurable private storage with authorized download routes",
+      "Show preserved local records when a live request is temporarily delayed",
+    ]],
+  ];
+  const groupX = [56, 448, 840];
+  groups.forEach(([label, color, items], groupIndex) => {
+    const x = groupX[groupIndex];
+    text(s, label, { left: x, top: 470, width: 330, height: 24 }, { size: 12, bold: true, color });
+    let y = 506;
+    for (const item of items) {
+      text(s, "•", { left: x, top: y + 1, width: 18, height: 22 }, { size: 15, bold: true, color });
+      text(s, item, { left: x + 22, top: y, width: 340, height: 34 }, { size: 12.5, color: C.ink });
+      y += 38;
+    }
+    if (groupIndex < 2) rule(s, x + 372, 470, 0, C.line, 1);
+  });
+  footer(s, 4);
+  s.speakerNotes.text = "Implemented features verified from frontend routes and pages, API client methods, FastAPI routers, storage and extraction services, curator security, search service and assistant service. The slide describes current capabilities only.";
+}
+
+// 5. End-to-end flow
+{
+  const s = deck.slides.add();
+  s.background.fill = C.paper;
+  header(s, 5, "From an uploaded source to verified discovery", "Automation handles repetitive processing. Curators retain editorial control.");
   const items = [
     ["UPLOAD", "PDF or image"],
     ["VALIDATE", "File type and size"],
@@ -262,15 +306,15 @@ deck.theme.defaultFont = sans;
   box(s, { left: 56, top: 570, width: 1155, height: 68 }, { fill: C.panel, line: { style: "solid", fill: C.line, width: 1 } });
   text(s, "Failure remains visible and recoverable", { left: 82, top: 584, width: 380, height: 30 }, { font: serif, size: 20, bold: true });
   text(s, "The backend records errors, preserves the original source and can resubmit interrupted background work after restart.", { left: 480, top: 582, width: 690, height: 34 }, { size: 16, color: C.muted });
-  footer(s, 4);
+  footer(s, 5);
   s.speakerNotes.text = "Workflow verified in backend document router, storage service and background processing service. Upload polling and curator review are implemented in the frontend UploadPage.";
 }
 
-// 5. Tech stack and architecture
+// 6. Tech stack and architecture
 {
   const s = deck.slides.add();
   s.background.fill = C.paper;
-  header(s, 5, "Technical architecture and verified stack", "The repository uses one modular backend with clear boundaries for storage, processing and public discovery.");
+  header(s, 6, "Technical architecture and verified stack", "The repository uses one modular backend with clear boundaries for storage, processing and public discovery.");
 
   const client = node(s, "FRONTEND", "React 19 + Vite 8\nReact Router 7\nReact Leaflet 5\nFramer Motion + Axios\nHosted on Vercel", { left: 56, top: 225, width: 230, height: 215 }, { line: C.cyan, titleColor: C.cyan, fill: C.panel });
   const api = node(s, "BACKEND", "FastAPI + Uvicorn\nSQLAlchemy 2 + Pydantic 2\nCurator session auth\nREST API on Render", { left: 350, top: 225, width: 240, height: 215 }, { line: C.orange, titleColor: C.orange, fill: C.panel });
@@ -283,15 +327,15 @@ deck.theme.defaultFont = sans;
   connect(s, data, retrieval, "bottom", "top");
   const secure = node(s, "SECURITY", "Service-role credentials stay on the backend. Public browsing remains read-only.", { left: 960, top: 515, width: 260, height: 92 }, { line: C.maroon, titleColor: C.maroon, titleSize: 15, fill: "#F4E7E8" });
   connect(s, services, secure, "bottom", "top");
-  footer(s, 5);
+  footer(s, 6);
   s.speakerNotes.text = "Stack verified from package manifests, Docker configuration, backend database and storage code, Alembic migrations, deployment configuration and frontend source.";
 }
 
-// 6. Feasibility and proof
+// 7. Feasibility and proof
 {
   const s = deck.slides.add();
   s.background.fill = C.paper;
-  header(s, 6, "Feasibility for a pilot archive", "The current system can support a controlled institutional pilot. Each feasibility claim has evidence and a defined next step.");
+  header(s, 7, "Feasibility for a pilot archive", "The current system can support a controlled institutional pilot. Each feasibility claim has evidence and a defined next step.");
 
   text(s, "AREA", { left: 56, top: 220, width: 170, height: 24 }, { size: 12, bold: true, color: C.maroon });
   text(s, "EVIDENCE IN THE CURRENT BUILD", { left: 245, top: 220, width: 500, height: 24 }, { size: 12, bold: true, color: C.maroon });
@@ -316,17 +360,17 @@ deck.theme.defaultFont = sans;
   box(s, { left: 56, top: 616, width: 1155, height: 54 }, { fill: "#E4EEE9", line: { style: "solid", fill: C.green, width: 1.2 } });
   text(s, "Pilot conclusion", { left: 78, top: 628, width: 160, height: 28 }, { font: serif, size: 19, bold: true, color: C.green });
   text(s, "Ready for a controlled pilot. A broader rollout still needs individual curator roles, production monitoring and a managed job queue.", { left: 245, top: 626, width: 930, height: 30 }, { size: 16, color: C.ink });
-  footer(s, 6);
+  footer(s, 7);
   s.speakerNotes.text = "Feasibility is framed for a controlled pilot rather than a full institutional rollout. The architecture and repository support each current-build claim. Live Supabase storage and production migrations still require deployment verification. Cost claims are qualitative because production usage data is not available.";
 }
 
-// 7. Impact and roadmap
+// 8. Impact and roadmap
 {
   const s = deck.slides.add();
   s.background.fill = C.paper;
   await image(s, A.rani, { left: 0, top: 0, width: 1280, height: 720 }, { alt: "Rani ki Vav sculpture" });
   box(s, { left: 0, top: 0, width: 1280, height: 720 }, { geometry: "rect", fill: "#F7F1E5/88", line: { style: "solid", fill: "none", width: 0 }, radius: 0 });
-  header(s, 7, "Impact now, stronger retrieval next", "The current product solves preservation and discovery first. Phase 2 can improve multilingual retrieval after production verification.");
+  header(s, 8, "Who benefits and what comes next", "Current pathways: archival OCR and geospatial discovery. Planned pathways: multilingual intelligence and computer vision with 3D experiences.");
 
   const users = [
     ["Researchers", "Find evidence across sites and digitized records"],
@@ -341,11 +385,11 @@ deck.theme.defaultFont = sans;
     text(s, item[1], { left: x + 18, top: 302, width: 226, height: 48 }, { size: 15, color: C.ink });
   });
 
-  text(s, "NEXT", { left: 56, top: 430, width: 80, height: 24 }, { size: 13, bold: true, color: C.cyan });
+  text(s, "FUTURE PLAN", { left: 56, top: 430, width: 160, height: 24 }, { size: 13, bold: true, color: C.cyan });
   const roadmap = [
-    ["Production verification", "Apply migrations, configure private storage and test live upload"],
-    ["Multilingual retrieval", "Add embeddings and hybrid ranking for regional-language archives"],
-    ["Evaluation", "Measure retrieval quality and citation faithfulness"],
+    ["Institutional readiness", "Add individual curator roles, monitoring and a managed OCR job queue"],
+    ["Multilingual archives", "Extend OCR and translation for Devanagari and regional-language sources, then add hybrid retrieval"],
+    ["Computer vision and 3D", "Ingest crowdsourced monument photographs, reconstruct digital twins and present them in a WebGL viewer"],
   ];
   roadmap.forEach((item, i) => {
     const x = 56 + i * 380;
@@ -355,8 +399,8 @@ deck.theme.defaultFont = sans;
   });
   rule(s, 56, 638, 1155, C.cyan, 1.5);
   text(s, "HeritageLens makes cultural evidence searchable without losing the path back to its source.", { left: 128, top: 650, width: 1020, height: 34 }, { font: serif, size: 22, bold: true, align: "center" });
-  footer(s, 7);
-  s.speakerNotes.text = "The roadmap clearly separates implemented functionality from future work. Phase 2 multilingual semantic retrieval has not been implemented.";
+  footer(s, 8);
+  s.speakerNotes.text = "The current product implements the archival OCR and geospatial pathways described in the HackCult brief. Multilingual OCR and translation, semantic retrieval, crowdsourced photogrammetry, 3D reconstruction and WebGL digital twins remain future work and are not presented as implemented.";
 }
 
 await fs.mkdir(buildDir, { recursive: true });
@@ -374,7 +418,7 @@ const candidatePath = path.join(stagingDir, "candidate.pptx");
 await (await PresentationFile.exportPptx(deck)).save(candidatePath);
 const { finalizePresentation } = await import(pathToFileURL(path.join(skillDir, "container_tools/artifact_tool_utils.mjs")).href);
 await finalizePresentation({
-  explicitTotalSlideCount: 7,
+  explicitTotalSlideCount: 8,
   requiredNativeTableOwnerSlides: [],
   requiredNativeChartOwnerSlides: [],
   workspaceDir,
@@ -386,6 +430,6 @@ await finalizePresentation({
   layoutArgs: ["--expected-slide-size-emu", "12192000,6858000", "--validate-heading-fit"],
   fontPolicy: { basis: "design", families: [serif, sans] },
   verifyArtifactToolImport: true,
-  receiptPath: path.join(stagingDir, "HeritageLens-Light-Hackathon-Pitch.validation.json"),
+  receiptPath: path.join(stagingDir, "HeritageLens-Complete-Feature-Pitch.validation.json"),
 });
 console.log(finalPptx);

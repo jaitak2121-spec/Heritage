@@ -47,7 +47,7 @@ def is_tesseract_available() -> bool:
         return False
 
 
-def extract_text_from_pdf(file_path: Path) -> Dict[str, Any]:
+def extract_text_from_pdf(file_path: Path, language: str = "eng") -> Dict[str, Any]:
     """
     Extract text from a PDF file using PyMuPDF.
     If the PDF consists of scanned pages without selectable text,
@@ -113,7 +113,7 @@ def extract_text_from_pdf(file_path: Path) -> Dict[str, Any]:
             mat = pymupdf.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
             img = Image.open(io.BytesIO(pix.tobytes("png")))
-            ocr_text = pytesseract.image_to_string(img)
+            ocr_text = pytesseract.image_to_string(img, lang=language)
             if ocr_text and ocr_text.strip():
                 ocr_pages.append(ocr_text.strip())
 
@@ -139,7 +139,7 @@ def extract_text_from_pdf(file_path: Path) -> Dict[str, Any]:
         raise ExtractionError(f"OCR processing failed for scanned PDF: {str(e)}")
 
 
-def extract_text_from_image(file_path: Path) -> Dict[str, Any]:
+def extract_text_from_image(file_path: Path, language: str = "eng") -> Dict[str, Any]:
     """
     Extract text from an image file (PNG, JPG, TIFF) using Tesseract OCR.
     """
@@ -154,7 +154,7 @@ def extract_text_from_image(file_path: Path) -> Dict[str, Any]:
         from PIL import Image
 
         img = Image.open(str(file_path))
-        ocr_text = pytesseract.image_to_string(img)
+        ocr_text = pytesseract.image_to_string(img, lang=language)
         text = ocr_text.strip()
 
         if not text:
@@ -176,14 +176,14 @@ def extract_text_from_image(file_path: Path) -> Dict[str, Any]:
         raise ExtractionError(f"Image OCR processing failed: {str(e)}")
 
 
-def extract_document_text(file_path: Path, original_filename: str) -> Dict[str, Any]:
+def extract_document_text(file_path: Path, original_filename: str, language: str = "eng") -> Dict[str, Any]:
     """
     Unified extraction router based on file extension.
     """
     suffix = file_path.suffix.lower()
     if suffix == ".pdf":
-        return extract_text_from_pdf(file_path)
+        return extract_text_from_pdf(file_path, language)
     elif suffix in [".png", ".jpg", ".jpeg", ".tiff", ".tif"]:
-        return extract_text_from_image(file_path)
+        return extract_text_from_image(file_path, language)
     else:
         raise ExtractionError(f"Unsupported file format '{suffix}'. Accepted types: .pdf, .png, .jpg, .jpeg, .tiff")
