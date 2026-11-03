@@ -11,6 +11,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # PostgreSQL enforces Alembic's default 32-character version column.
+    # Preserve the revision ID already recorded by existing SQLite installs.
+    if op.get_bind().dialect.name == "postgresql":
+        op.alter_column("alembic_version", "version_num", type_=sa.String(64))
     documents = sa.table(
         "archival_documents",
         sa.column("extracted_text", sa.Text()),
