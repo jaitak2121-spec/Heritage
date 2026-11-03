@@ -92,6 +92,15 @@ test('timeline opens the Sanchi record and its interactive study', async ({ page
   await page.getByRole('link', { name: 'Open record', exact: true }).click();
   await page.getByRole('button', { name: 'Explore 3D study' }).click();
   await expect(page.locator('canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Approach the gateway' }).click();
+  await expect(page.getByAltText(/Sculpted figures and crossbar details/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Gateway', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Follow the terrace' }).click();
+  await expect(page.getByRole('button', { name: 'Railing', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'View from above' }).click();
+  await expect(page.getByRole('button', { name: 'Parasol', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Dome', exact: true }).click();
+  await expect(page.getByText(/rounded masonry dome/)).toBeVisible();
   await page.getByRole('button', { name: 'Rotate view' }).click();
   await page.getByRole('button', { name: 'Reset view' }).click();
 });
